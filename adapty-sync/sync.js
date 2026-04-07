@@ -51,11 +51,11 @@ async function scrapeTikTokMetrics(url) {
       if (!video?.stats) return null;
 
       return {
-        views: video.stats.playCount || 0,
-        likes: video.stats.diggCount || 0,
-        comments: video.stats.commentCount || 0,
-        shares: video.stats.shareCount || 0,
-        saves: video.stats.collectCount || 0,
+        views: parseInt(video.stats.playCount) || 0,
+        likes: parseInt(video.stats.diggCount) || 0,
+        comments: parseInt(video.stats.commentCount) || 0,
+        shares: parseInt(video.stats.shareCount) || 0,
+        saves: parseInt(video.stats.collectCount) || 0,
       };
     }
 
@@ -66,13 +66,55 @@ async function scrapeTikTokMetrics(url) {
     if (!videoData?.stats) return null;
 
     return {
-      views: videoData.stats.playCount || 0,
-      likes: videoData.stats.diggCount || 0,
-      comments: videoData.stats.commentCount || 0,
-      shares: videoData.stats.shareCount || 0,
-      saves: videoData.stats.collectCount || 0,
+      views: parseInt(videoData.stats.playCount) || 0,
+      likes: parseInt(videoData.stats.diggCount) || 0,
+      comments: parseInt(videoData.stats.commentCount) || 0,
+      shares: parseInt(videoData.stats.shareCount) || 0,
+      saves: parseInt(videoData.stats.collectCount) || 0,
     };
   } catch (err) {
+    return null;
+  }
+}
+
+// ─── TikTok Profile Scraper (Followers) ───────────────────────────────────────
+
+async function scrapeTikTokProfile(username) {
+  try {
+    const url = `https://www.tiktok.com/@${username}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const html = await response.text();
+
+    const scriptMatch = html.match(
+      /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/
+    );
+
+    if (!scriptMatch) return null;
+
+    const jsonData = JSON.parse(scriptMatch[1]);
+    const userInfo =
+      jsonData?.["__DEFAULT_SCOPE__"]?.["webapp.user-detail"]?.["userInfo"];
+
+    if (!userInfo?.stats) return null;
+
+    return {
+      followers: userInfo.stats.followerCount || 0,
+      following: userInfo.stats.followingCount || 0,
+      likes: userInfo.stats.heartCount || 0,
+      videos: userInfo.stats.videoCount || 0,
+    };
+  } catch (err) {
+    console.log(`   ⚠️  Could not scrape profile: ${err.message}`);
     return null;
   }
 }
@@ -176,6 +218,7 @@ async function updateTikTokMetrics(pageId, metrics) {
       "TikTok Likes": { number: metrics.likes },
       "TikTok Comments": { number: metrics.comments },
       "TikTok Shares": { number: metrics.shares },
+      "TikTok Saves": { number: metrics.saves },
     },
   });
 }
@@ -308,7 +351,39 @@ async function main() {
   }
 
   console.log(`✨ Done! Updated: ${updated} | Created: ${created} | Errors: ${errors}`);
-  console.log(`Finished: ${new Date().toLocaleString()}`);
+
+  // ─── Follower Tracking ──────────────────────────────────────────────────────
+  const tiktokUsername = process.env.TIKTOK_USERNAME;
+  if (tiktokUsername) {
+    console.log(`\n📊 Tracking followers for @${tiktokUsername}...`);
+    const profile = await scrapeTikTokProfile(tiktokUsername);
+    if (profile) {
+      console.log(`   Followers: ${profile.followers.toLocaleString()}`);
+      console.log(`   Total Likes: ${profile.likes.toLocaleString()}`);
+      console.log(`   Videos: ${profile.videos}`);
+
+      // Store in growth tracking database if configured
+      const growthDbId = process.env.NOTION_GROWTH_DATABASE_ID;
+      if (growthDbId) {
+        try {
+          await notion.pages.create({
+            parent: { database_id: growthDbId },
+            properties: {
+              Date: { date: { start: new Date().toISOString().split("T")[0] } },
+              "TikTok Followers": { number: profile.followers },
+              "TikTok Likes": { number: profile.likes },
+              "TikTok Videos": { number: profile.videos },
+            },
+          });
+          console.log(`   ✅ Saved to Growth Tracking database`);
+        } catch (err) {
+          console.log(`   ⚠️  Could not save to Growth DB: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  console.log(`\nFinished: ${new Date().toLocaleString()}`);
 }
 
 main().catch((err) => {
