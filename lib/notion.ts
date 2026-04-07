@@ -39,25 +39,49 @@ function getPropertyValue(property: any): any {
 function pageToPost(page: any): ContentPost {
   const props = page.properties;
 
+  // Determine platform from which URL is set
+  const tiktokUrl = getPropertyValue(props['TikTok URL']);
+  const igUrl = getPropertyValue(props['Instagram URL']);
+  const platform = tiktokUrl ? 'TikTok' : igUrl ? 'Instagram' : 'TikTok';
+
+  // Get metrics based on platform, with Total as fallback
+  const views = getPropertyValue(props['Total Views'])
+    || getPropertyValue(props['TikTok Views'])
+    || getPropertyValue(props['IG Views'])
+    || 0;
+  const likes = getPropertyValue(props['Total Likes'])
+    || getPropertyValue(props['TikTok Likes'])
+    || getPropertyValue(props['IG Likes'])
+    || 0;
+  const comments = getPropertyValue(props['Total Comments'])
+    || getPropertyValue(props['TikTok Comments'])
+    || getPropertyValue(props['IG Comments'])
+    || 0;
+  const shares = getPropertyValue(props['Total Shares'])
+    || getPropertyValue(props['TikTok Shares'])
+    || getPropertyValue(props['IG Shares'])
+    || 0;
+  const saves = getPropertyValue(props['IG Saves']) || 0;
+
   return {
     id: page.id,
     title: getPropertyValue(props['Title']) || getPropertyValue(props['Name']) || 'Untitled',
     status: getPropertyValue(props['Status']) || 'Idea',
     pillar: getPropertyValue(props['Content Pillar']) || 'Educational',
-    platform: getPropertyValue(props['Platform']) || 'TikTok',
+    platform,
     hook: getPropertyValue(props['Hook']) || '',
     caption: getPropertyValue(props['Caption']) || '',
     cta: getPropertyValue(props['CTA']) || '',
     postDate: getPropertyValue(props['Post Date']),
-    postUrl: getPropertyValue(props['Post URL']),
+    postUrl: tiktokUrl || igUrl,
 
     // Metrics
-    views: getPropertyValue(props['Views']),
-    likes: getPropertyValue(props['Likes']),
-    comments: getPropertyValue(props['Comments']),
-    shares: getPropertyValue(props['Shares']),
-    saves: getPropertyValue(props['Saves']),
-    engagementRate: getPropertyValue(props['Engagement Rate']),
+    views,
+    likes,
+    comments,
+    shares,
+    saves,
+    engagementRate: getPropertyValue(props['Total Engagement']),
 
     // Metadata
     createdAt: page.created_time,
