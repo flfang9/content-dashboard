@@ -33,3 +33,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+adapty-sync/node_modules/
+adapty-sync/.env

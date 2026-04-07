@@ -1,0 +1,15 @@
+{
+  "name": "adapty-sync",
+  "version": "1.0.0",
+  "description": "Sync Instagram & TikTok metrics to Notion Content Calendar",
+  "main": "sync.js",
+  "scripts": {
+    "sync": "node refresh-tiktok-token.js && node sync.js",
+    "sync:ig-only": "node sync.js",
+    "refresh": "node refresh-tiktok-token.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.14",
+    "dotenv": "^16.4.5"
+  }
+}
