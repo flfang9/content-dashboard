@@ -60,19 +60,29 @@ Add these environment variables in your [Vercel dashboard](https://vercel.com):
 - `NOTION_DATABASE_ID`
 - `CRON_SECRET` (any random string)
 
-### 6. Set Up Auto-Sync
+### 6. Connect Your TikTok
+
+No API keys needed - just add your username:
 
 ```bash
 cd sync
 npm install
 cp .env.example .env
-# Edit .env with your Notion credentials and TikTok username
+```
+
+Edit `sync/.env`:
+```env
+NOTION_TOKEN=secret_xxxxx          # Same as NOTION_API_KEY
+NOTION_DATABASE_ID=xxxxx           # Your database ID
+TIKTOK_USERNAME=yourusername       # Your TikTok username (without @)
 ```
 
 Test it:
 ```bash
 node sync.js
 ```
+
+You should see your follower count and any videos you've added to Notion.
 
 Set up daily sync (runs at 8am):
 ```bash
@@ -102,9 +112,15 @@ crontab -e
 ## How It Works
 
 ### TikTok (No API needed)
-- Scrapes public metrics directly from TikTok video pages
-- Just add your video URLs to Notion
-- Also tracks your profile followers, total likes, video count
+
+**Follower tracking:**
+- Add your username to `sync/.env` as `TIKTOK_USERNAME=yourusername`
+- The script scrapes your public profile for followers, total likes, video count
+
+**Video metrics:**
+- Paste your video URLs into the `TikTok URL` column in Notion
+- The script scrapes each video for views, likes, comments, shares, saves
+- Example URL: `https://www.tiktok.com/@yourusername/video/1234567890`
 
 ### Instagram (Optional setup)
 - Requires Instagram Business/Creator account connected to a Facebook Page
