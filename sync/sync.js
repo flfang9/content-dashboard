@@ -6,7 +6,7 @@
  * - Instagram: Uses Graph API (optional, requires setup)
  *
  * Run manually:  node sync.js
- * Daily cron:    0 8 * * * cd /path/to/adapty-sync && node sync.js
+ * Daily cron:    0 8 * * * cd /path/to/sync && node sync.js
  */
 
 require("dotenv").config();

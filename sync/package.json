@@ -1,5 +1,5 @@
 {
-  "name": "adapty-sync",
+  "name": "content-sync",
   "version": "1.0.0",
   "description": "Sync Instagram & TikTok metrics to Notion Content Calendar",
   "main": "sync.js",
