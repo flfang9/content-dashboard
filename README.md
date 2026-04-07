@@ -2,65 +2,54 @@
 
 A self-hosted dashboard that syncs your TikTok and Instagram metrics to Notion and displays them in a clean web UI.
 
-![Dashboard Preview](https://content-dashboard-gold.vercel.app)
-
 ## Features
 
-- **TikTok Metrics** - Scrapes views, likes, comments, shares from your video URLs (no API key needed)
+- **TikTok Metrics** - Scrapes views, likes, comments, shares, saves (no API key needed)
 - **Instagram Metrics** - Pulls metrics via Instagram Graph API (optional)
+- **Follower Tracking** - Track follower growth over time
 - **Notion Integration** - Stores everything in your Notion Content Calendar
 - **Auto-sync** - Daily cron job keeps metrics updated
 - **Dashboard** - Clean web UI with charts and stats
 
-## Setup
+## Quick Start
 
-### 1. Clone and install
+### Option 1: Use the Notion Template (Recommended)
+
+1. **Duplicate the template**: [Content Calendar Template](TEMPLATE_LINK_HERE)
+2. Click "Duplicate" in the top right
+3. Continue to step 3 below
+
+### Option 2: Auto-create Database
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/content-dashboard.git
+# Clone and install
+git clone https://github.com/flfang9/content-dashboard.git
 cd content-dashboard
 npm install
+
+# Create Notion integration at notion.so/my-integrations
+# Share a page with your integration, then:
+cd scripts
+NOTION_TOKEN=secret_xxx NOTION_PAGE_ID=your-page-id node setup-notion.js
 ```
 
-### 2. Create Notion database
-
-Create a Notion database with these properties:
-
-| Property | Type |
-|----------|------|
-| Title | Title |
-| Status | Select (Idea, Drafting, Ready, Scheduled, Posted) |
-| Content Pillar | Select |
-| TikTok URL | URL |
-| Instagram URL | URL |
-| TikTok Views | Number |
-| TikTok Likes | Number |
-| TikTok Comments | Number |
-| TikTok Shares | Number |
-| IG Views | Number |
-| IG Likes | Number |
-| IG Comments | Number |
-| IG Shares | Number |
-| IG Saves | Number |
-| Post Date | Date |
-
-### 3. Create Notion integration
+### 3. Create Notion Integration
 
 1. Go to [notion.so/my-integrations](https://notion.so/my-integrations)
-2. Create new integration
-3. Copy the API key
-4. Connect the integration to your database (Database → ... → Connections)
+2. Create new integration → Copy the API key
+3. Open your database → `...` → Connections → Add your integration
 
-### 4. Configure environment
+### 4. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env`:
-```
+```env
 NOTION_API_KEY=secret_xxxxx
 NOTION_DATABASE_ID=your-database-id
+TIKTOK_USERNAME=your-tiktok-username
 ```
 
 ### 5. Deploy to Vercel
@@ -75,15 +64,13 @@ Add environment variables in Vercel dashboard:
 - `NOTION_DATABASE_ID`
 - `CRON_SECRET` (any random string)
 
-### 6. Set up local sync (optional)
-
-For TikTok scraping, set up the local sync script:
+### 6. Set Up Daily Sync
 
 ```bash
 cd adapty-sync
 npm install
 cp .env.example .env
-# Edit .env with your Notion credentials
+# Edit .env with your credentials
 ```
 
 Run manually:
@@ -91,20 +78,49 @@ Run manually:
 node sync.js
 ```
 
-Or set up a daily cron job:
+Set up daily cron (8am):
 ```bash
 crontab -e
 # Add: 0 8 * * * cd /path/to/content-dashboard/adapty-sync && node sync.js
 ```
 
-## How it works
+## What Gets Tracked
+
+| Metric | TikTok | Instagram |
+|--------|--------|-----------|
+| Views | ✅ | ✅ |
+| Likes | ✅ | ✅ |
+| Comments | ✅ | ✅ |
+| Shares | ✅ | ✅ |
+| Saves/Bookmarks | ✅ | ✅ |
+| Followers | ✅ | ❌ |
+
+## Database Schema
+
+The Notion database includes:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| Title | Title | Post title/description |
+| Status | Select | Idea, Drafting, Ready, Scheduled, Posted |
+| Content Pillar | Select | Educational, BTS, Entertainment, etc. |
+| TikTok URL | URL | Link to TikTok video |
+| Instagram URL | URL | Link to Instagram post |
+| TikTok Views/Likes/Comments/Shares/Saves | Number | TikTok metrics |
+| IG Views/Likes/Comments/Shares/Saves | Number | Instagram metrics |
+| Post Date | Date | When it was posted |
+| Total Views/Likes/etc. | Formula | Combined metrics |
+| Total Engagement | Formula | Engagement rate % |
+
+## How It Works
 
 ### TikTok
 - Add video URLs to your Notion database
 - The sync script scrapes public metrics from TikTok pages
 - No API key needed - just works
+- Also tracks profile followers, total likes, video count
 
-### Instagram (optional)
+### Instagram (Optional)
 - Requires Instagram Business/Creator account
 - Connect to a Facebook Page
 - Set up Meta Developer App with Instagram Graph API
@@ -119,4 +135,4 @@ crontab -e
 
 ## License
 
-MIT
+MIT - Built by [@buildwithfreddy](https://tiktok.com/@buildwithfreddy)
