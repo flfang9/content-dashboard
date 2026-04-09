@@ -39,29 +39,30 @@ function getPropertyValue(property: any): any {
 function pageToPost(page: any): ContentPost {
   const props = page.properties;
 
-  // Determine platform from which URL is set
+  // Get both URLs
   const tiktokUrl = getPropertyValue(props['TikTok URL']);
   const igUrl = getPropertyValue(props['Instagram URL']);
+
+  // Primary platform (for display) - prefer TikTok if both exist
   const platform = tiktokUrl ? 'TikTok' : igUrl ? 'Instagram' : 'TikTok';
 
-  // Get metrics based on platform, with Total as fallback
-  const views = getPropertyValue(props['Total Views'])
-    || getPropertyValue(props['TikTok Views'])
-    || getPropertyValue(props['IG Views'])
-    || 0;
-  const likes = getPropertyValue(props['Total Likes'])
-    || getPropertyValue(props['TikTok Likes'])
-    || getPropertyValue(props['IG Likes'])
-    || 0;
-  const comments = getPropertyValue(props['Total Comments'])
-    || getPropertyValue(props['TikTok Comments'])
-    || getPropertyValue(props['IG Comments'])
-    || 0;
-  const shares = getPropertyValue(props['Total Shares'])
-    || getPropertyValue(props['TikTok Shares'])
-    || getPropertyValue(props['IG Shares'])
-    || 0;
-  const saves = getPropertyValue(props['IG Saves']) || 0;
+  // Get combined metrics (sum of both platforms)
+  const tiktokViews = getPropertyValue(props['TikTok Views']) || 0;
+  const igViews = getPropertyValue(props['IG Views']) || 0;
+  const tiktokLikes = getPropertyValue(props['TikTok Likes']) || 0;
+  const igLikes = getPropertyValue(props['IG Likes']) || 0;
+  const tiktokComments = getPropertyValue(props['TikTok Comments']) || 0;
+  const igComments = getPropertyValue(props['IG Comments']) || 0;
+  const tiktokShares = getPropertyValue(props['TikTok Shares']) || 0;
+  const igShares = getPropertyValue(props['IG Shares']) || 0;
+  const igSaves = getPropertyValue(props['IG Saves']) || 0;
+
+  // Sum metrics from both platforms
+  const views = tiktokViews + igViews;
+  const likes = tiktokLikes + igLikes;
+  const comments = tiktokComments + igComments;
+  const shares = tiktokShares + igShares;
+  const saves = igSaves;
 
   return {
     id: page.id,
@@ -75,7 +76,11 @@ function pageToPost(page: any): ContentPost {
     postDate: getPropertyValue(props['Post Date']),
     postUrl: tiktokUrl || igUrl,
 
-    // Metrics
+    // Store both URLs for sync
+    tiktokUrl,
+    igUrl,
+
+    // Metrics (combined from both platforms)
     views,
     likes,
     comments,
@@ -126,10 +131,20 @@ export async function fetchPostedForSync(): Promise<ContentPost[]> {
           },
         },
         {
-          property: 'Post URL',
-          url: {
-            is_not_empty: true,
-          },
+          or: [
+            {
+              property: 'TikTok URL',
+              url: {
+                is_not_empty: true,
+              },
+            },
+            {
+              property: 'Instagram URL',
+              url: {
+                is_not_empty: true,
+              },
+            },
+          ],
         },
       ],
     },
@@ -141,6 +156,7 @@ export async function fetchPostedForSync(): Promise<ContentPost[]> {
 // Update metrics for a post
 export async function updatePostMetrics(
   pageId: string,
+  platform: 'TikTok' | 'Instagram',
   metrics: {
     views?: number;
     likes?: number;
@@ -149,29 +165,36 @@ export async function updatePostMetrics(
     saves?: number;
   }
 ): Promise<void> {
-  const properties: Record<string, any> = {
-    'Last Synced': {
-      date: {
-        start: new Date().toISOString(),
-      },
-    },
+  const properties: Record<string, any> = {};
+
+  // Helper to safely convert to number
+  const toNum = (val: any): number | null => {
+    if (val === undefined || val === null) return null;
+    const num = Number(val);
+    return isNaN(num) ? null : num;
   };
 
+  // Use platform-specific property names
+  const prefix = platform === 'TikTok' ? 'TikTok' : 'IG';
+
   if (metrics.views !== undefined) {
-    properties['Views'] = { number: metrics.views };
+    properties[`${prefix} Views`] = { number: toNum(metrics.views) };
   }
   if (metrics.likes !== undefined) {
-    properties['Likes'] = { number: metrics.likes };
+    properties[`${prefix} Likes`] = { number: toNum(metrics.likes) };
   }
   if (metrics.comments !== undefined) {
-    properties['Comments'] = { number: metrics.comments };
+    properties[`${prefix} Comments`] = { number: toNum(metrics.comments) };
   }
   if (metrics.shares !== undefined) {
-    properties['Shares'] = { number: metrics.shares };
+    properties[`${prefix} Shares`] = { number: toNum(metrics.shares) };
   }
-  if (metrics.saves !== undefined) {
-    properties['Saves'] = { number: metrics.saves };
+  if (metrics.saves !== undefined && platform === 'Instagram') {
+    // Only Instagram has saves tracked separately
+    properties['IG Saves'] = { number: toNum(metrics.saves) };
   }
+
+  console.log(`Updating ${platform} metrics for page ${pageId}:`, properties);
 
   await notion.pages.update({
     page_id: pageId,

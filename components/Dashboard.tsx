@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart,
   Bar,
@@ -16,6 +16,142 @@ import {
   Line,
 } from 'recharts';
 import { ContentPost, DashboardStats } from '@/types';
+
+// Extract video ID from TikTok URL
+function getTikTokVideoId(url: string): string | null {
+  const match = url.match(/video\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+// Video Modal Component
+function VideoModal({
+  post,
+  onClose,
+}: {
+  post: ContentPost;
+  onClose: () => void;
+}) {
+  const hasBothPlatforms = post.tiktokUrl && post.igUrl;
+  const [activePlatform, setActivePlatform] = useState<'TikTok' | 'Instagram'>(
+    post.tiktokUrl ? 'TikTok' : 'Instagram'
+  );
+
+  const activeUrl = activePlatform === 'TikTok' ? post.tiktokUrl : post.igUrl;
+  const videoId = activeUrl ? getTikTokVideoId(activeUrl) : null;
+
+  // Close on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#141414] border border-[#262626] rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-[#262626]">
+          <div className="flex items-center gap-3">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: PLATFORM_COLORS[activePlatform] || '#666' }}
+            />
+            <div>
+              <p className="text-white font-medium truncate max-w-[250px]">{post.title}</p>
+              {hasBothPlatforms ? (
+                <div className="flex gap-1 mt-1">
+                  <button
+                    onClick={() => setActivePlatform('TikTok')}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                      activePlatform === 'TikTok'
+                        ? 'bg-[#00f2ea] text-black'
+                        : 'bg-[#262626] text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    TikTok
+                  </button>
+                  <button
+                    onClick={() => setActivePlatform('Instagram')}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                      activePlatform === 'Instagram'
+                        ? 'bg-[#e4405f] text-white'
+                        : 'bg-[#262626] text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Instagram
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">{activePlatform}</p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors p-1"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Video Embed */}
+        <div className="aspect-[9/16] bg-black">
+          {activePlatform === 'TikTok' && videoId ? (
+            <iframe
+              key={`tiktok-${videoId}`}
+              src={`https://www.tiktok.com/embed/v2/${videoId}`}
+              className="w-full h-full"
+              allowFullScreen
+              allow="encrypted-media"
+            />
+          ) : activePlatform === 'Instagram' && activeUrl ? (
+            <iframe
+              key={`ig-${activeUrl}`}
+              src={`${activeUrl}embed`}
+              className="w-full h-full"
+              allowFullScreen
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-500">
+              Embed not available
+            </div>
+          )}
+        </div>
+
+        {/* Footer with link */}
+        <div className="p-4 border-t border-[#262626] flex items-center justify-between">
+          <div className="text-sm text-gray-400">
+            {post.views && <span>{formatNumber(post.views)} views</span>}
+            {post.likes && <span className="ml-3">{formatNumber(post.likes)} likes</span>}
+          </div>
+          {activeUrl && (
+            <a
+              href={activeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#262626] hover:bg-[#333] text-white text-sm rounded-lg transition-colors"
+            >
+              Open in {activePlatform}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PLATFORM_COLORS: Record<string, string> = {
   TikTok: '#00f2ea',
@@ -76,18 +212,43 @@ function StatCard({
   );
 }
 
-function PostRow({ post }: { post: ContentPost }) {
+function PostRow({ post, onVideoClick }: { post: ContentPost; onVideoClick: (post: ContentPost) => void }) {
+  const hasVideo = post.status === 'Posted' && post.postUrl;
+  const hasBothPlatforms = post.tiktokUrl && post.igUrl;
+
   return (
     <tr className="border-b border-[#262626] hover:bg-[#1a1a1a] transition-colors">
       <td className="py-3 px-4">
         <div className="flex items-center gap-3">
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: PLATFORM_COLORS[post.platform] || '#666' }}
-          />
+          {/* Play button for posted videos */}
+          {hasVideo ? (
+            <button
+              onClick={() => onVideoClick(post)}
+              className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00f2ea] to-[#ff0050] flex items-center justify-center hover:scale-110 transition-transform group"
+              title="Watch video"
+            >
+              <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+          ) : (
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: PLATFORM_COLORS[post.platform] || '#666' }}
+            />
+          )}
           <div>
             <p className="text-white font-medium truncate max-w-[200px]">{post.title}</p>
-            <p className="text-xs text-gray-500">{post.platform}</p>
+            <div className="flex items-center gap-1.5">
+              {hasBothPlatforms ? (
+                <>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: `${PLATFORM_COLORS['TikTok']}20`, color: PLATFORM_COLORS['TikTok'] }}>TT</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: `${PLATFORM_COLORS['Instagram']}20`, color: PLATFORM_COLORS['Instagram'] }}>IG</span>
+                </>
+              ) : (
+                <p className="text-xs text-gray-500">{post.platform}</p>
+              )}
+            </div>
           </div>
         </div>
       </td>
@@ -129,6 +290,8 @@ function PostRow({ post }: { post: ContentPost }) {
   );
 }
 
+type PlatformFilter = 'all' | 'tiktok' | 'instagram';
+
 export default function Dashboard() {
   const [posts, setPosts] = useState<ContentPost[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -136,6 +299,56 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<ContentPost | null>(null);
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
+
+  const handleVideoClick = useCallback((post: ContentPost) => {
+    setSelectedVideo(post);
+  }, []);
+
+  const handleCloseVideo = useCallback(() => {
+    setSelectedVideo(null);
+  }, []);
+
+  // Filter posts by platform
+  const filteredPosts = posts.filter(post => {
+    if (platformFilter === 'all') return true;
+    if (platformFilter === 'tiktok') return !!post.tiktokUrl;
+    if (platformFilter === 'instagram') return !!post.igUrl;
+    return true;
+  });
+
+  // Calculate stats for filtered posts
+  const filteredStats = (() => {
+    const postedPosts = filteredPosts.filter(p => p.status === 'Posted');
+
+    const totalViews = postedPosts.reduce((sum, p) => sum + (p.views || 0), 0);
+    const totalLikes = postedPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const totalComments = postedPosts.reduce((sum, p) => sum + (p.comments || 0), 0);
+    const totalShares = postedPosts.reduce((sum, p) => sum + (p.shares || 0), 0);
+    const totalSaves = postedPosts.reduce((sum, p) => sum + (p.saves || 0), 0);
+
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const postsThisWeek = postedPosts.filter(p =>
+      p.postDate && new Date(p.postDate) >= weekAgo
+    ).length;
+
+    const topPerformer = postedPosts
+      .filter(p => p.engagementRate !== null)
+      .sort((a, b) => (b.engagementRate || 0) - (a.engagementRate || 0))[0] || null;
+
+    return {
+      totalPosts: postedPosts.length,
+      totalViews,
+      totalLikes,
+      totalComments,
+      totalShares,
+      totalSaves,
+      postsThisWeek,
+      topPerformer,
+    };
+  })();
 
   const fetchData = async () => {
     try {
@@ -182,26 +395,44 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  // Prepare chart data
+  // Prepare chart data (use all posts for platform comparison, filtered for others)
   const platformData = posts.reduce((acc, post) => {
     if (post.status === 'Posted') {
-      const existing = acc.find(p => p.platform === post.platform);
-      if (existing) {
-        existing.posts += 1;
-        existing.views += post.views || 0;
-      } else {
-        acc.push({
-          platform: post.platform,
-          posts: 1,
-          views: post.views || 0,
-          color: PLATFORM_COLORS[post.platform] || '#666',
-        });
+      // Count TikTok
+      if (post.tiktokUrl) {
+        const existing = acc.find(p => p.platform === 'TikTok');
+        if (existing) {
+          existing.posts += 1;
+          existing.views += post.views || 0; // TODO: use platform-specific views
+        } else {
+          acc.push({
+            platform: 'TikTok',
+            posts: 1,
+            views: post.views || 0,
+            color: PLATFORM_COLORS['TikTok'],
+          });
+        }
+      }
+      // Count Instagram
+      if (post.igUrl) {
+        const existing = acc.find(p => p.platform === 'Instagram');
+        if (existing) {
+          existing.posts += 1;
+          existing.views += post.views || 0; // TODO: use platform-specific views
+        } else {
+          acc.push({
+            platform: 'Instagram',
+            posts: 1,
+            views: post.views || 0,
+            color: PLATFORM_COLORS['Instagram'],
+          });
+        }
       }
     }
     return acc;
   }, [] as Array<{ platform: string; posts: number; views: number; color: string }>);
 
-  const pillarData = posts.reduce((acc, post) => {
+  const pillarData = filteredPosts.reduce((acc, post) => {
     const existing = acc.find(p => p.pillar === post.pillar);
     if (existing) {
       existing.count += 1;
@@ -215,7 +446,7 @@ export default function Dashboard() {
     return acc;
   }, [] as Array<{ pillar: string; count: number; color: string }>);
 
-  const statusData = posts.reduce((acc, post) => {
+  const statusData = filteredPosts.reduce((acc, post) => {
     const existing = acc.find(s => s.status === post.status);
     if (existing) {
       existing.count += 1;
@@ -230,7 +461,7 @@ export default function Dashboard() {
   }, [] as Array<{ status: string; count: number; color: string }>);
 
   // Performance over time (last 30 days of posted content)
-  const performanceData = posts
+  const performanceData = filteredPosts
     .filter(p => p.status === 'Posted' && p.postDate)
     .sort((a, b) => new Date(a.postDate!).getTime() - new Date(b.postDate!).getTime())
     .slice(-10)
@@ -271,7 +502,7 @@ export default function Dashboard() {
     <div className="min-h-screen p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">Content Dashboard</h1>
             <p className="text-gray-500 text-sm mt-1">
@@ -298,23 +529,58 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Platform Tabs */}
+        <div className="flex items-center gap-2 mb-8">
+          <button
+            onClick={() => setPlatformFilter('all')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              platformFilter === 'all'
+                ? 'bg-white text-black'
+                : 'bg-[#141414] border border-[#262626] text-gray-400 hover:text-white'
+            }`}
+          >
+            All Platforms
+          </button>
+          <button
+            onClick={() => setPlatformFilter('tiktok')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+              platformFilter === 'tiktok'
+                ? 'bg-[#00f2ea] text-black'
+                : 'bg-[#141414] border border-[#262626] text-gray-400 hover:text-[#00f2ea]'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-[#00f2ea]" />
+            TikTok
+          </button>
+          <button
+            onClick={() => setPlatformFilter('instagram')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+              platformFilter === 'instagram'
+                ? 'bg-[#e4405f] text-white'
+                : 'bg-[#141414] border border-[#262626] text-gray-400 hover:text-[#e4405f]'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-[#e4405f]" />
+            Instagram
+          </button>
+        </div>
+
         {/* Stats Grid */}
-        {stats && (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            <StatCard title="Total Posts" value={stats.totalPosts} />
-            <StatCard title="Total Views" value={stats.totalViews} />
-            <StatCard title="Total Likes" value={stats.totalLikes} />
-            <StatCard
-              title="Avg Engagement"
-              value={`${stats.avgEngagementRate.toFixed(2)}%`}
-            />
-            <StatCard
-              title="This Week"
-              value={stats.postsThisWeek}
-              subtitle="posts published"
-            />
-          </div>
-        )}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <StatCard
+            title={platformFilter === 'all' ? 'Posts' : `${platformFilter === 'tiktok' ? 'TikTok' : 'IG'} Posts`}
+            value={filteredStats.totalPosts}
+          />
+          <StatCard title="Views" value={filteredStats.totalViews} />
+          <StatCard title="Likes" value={filteredStats.totalLikes} />
+          <StatCard title="Comments" value={filteredStats.totalComments} />
+          <StatCard title="Shares" value={filteredStats.totalShares} />
+          <StatCard
+            title={platformFilter === 'instagram' ? 'Saves' : 'This Week'}
+            value={platformFilter === 'instagram' ? filteredStats.totalSaves : filteredStats.postsThisWeek}
+            subtitle={platformFilter === 'instagram' ? undefined : 'posts'}
+          />
+        </div>
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -507,38 +773,45 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {posts.map(post => (
-                  <PostRow key={post.id} post={post} />
+                {filteredPosts.map(post => (
+                  <PostRow key={post.id} post={post} onVideoClick={handleVideoClick} />
                 ))}
               </tbody>
             </table>
           </div>
-          {posts.length === 0 && (
+          {filteredPosts.length === 0 && (
             <div className="p-8 text-center text-gray-500">
-              No content found. Add posts to your Notion database to see them here.
+              {platformFilter === 'all'
+                ? 'No content found. Add posts to your Notion database to see them here.'
+                : `No ${platformFilter === 'tiktok' ? 'TikTok' : 'Instagram'} posts found.`}
             </div>
           )}
         </div>
 
         {/* Top Performer */}
-        {stats?.topPerformer && (
+        {filteredStats.topPerformer && (
           <div className="mt-8 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-xl p-5">
             <p className="text-xs text-blue-400 uppercase tracking-wider mb-2">
-              Top Performer
+              Top Performer {platformFilter !== 'all' && `(${platformFilter === 'tiktok' ? 'TikTok' : 'Instagram'})`}
             </p>
             <p className="text-lg font-semibold text-white mb-1">
-              {stats.topPerformer.title}
+              {filteredStats.topPerformer.title}
             </p>
             <div className="flex items-center gap-4 text-sm text-gray-400">
-              <span>{stats.topPerformer.platform}</span>
+              <span>{filteredStats.topPerformer.platform}</span>
               <span>|</span>
-              <span>{formatNumber(stats.topPerformer.views || 0)} views</span>
+              <span>{formatNumber(filteredStats.topPerformer.views || 0)} views</span>
               <span>|</span>
-              <span>{stats.topPerformer.engagementRate?.toFixed(2)}% engagement</span>
+              <span>{filteredStats.topPerformer.engagementRate?.toFixed(2)}% engagement</span>
             </div>
           </div>
         )}
       </div>
+
+      {/* Video Modal */}
+      {selectedVideo && (
+        <VideoModal post={selectedVideo} onClose={handleCloseVideo} />
+      )}
     </div>
   );
 }

@@ -95,6 +95,84 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
   }
 }
 
+// Cache for Instagram media list (avoid repeated API calls)
+let igMediaCache: { data: any[]; fetchedAt: number } | null = null;
+const IG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Fetch all media from Instagram account
+async function fetchInstagramMedia(accessToken: string): Promise<any[]> {
+  // Check cache
+  if (igMediaCache && Date.now() - igMediaCache.fetchedAt < IG_CACHE_TTL) {
+    return igMediaCache.data;
+  }
+
+  const igUserId = process.env.IG_USER_ID;
+  if (!igUserId) {
+    console.error('IG_USER_ID not set - required for Instagram Graph API');
+    return [];
+  }
+
+  try {
+    // Fetch user's media with basic info including media_type for insights
+    const url = `https://graph.facebook.com/v19.0/${igUserId}/media?fields=id,shortcode,permalink,caption,media_type,timestamp,like_count,comments_count&limit=50&access_token=${accessToken}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Instagram media fetch error:', error);
+      return [];
+    }
+
+    const data = await response.json();
+    console.log(`Fetched ${data.data?.length || 0} Instagram media items`);
+    igMediaCache = { data: data.data || [], fetchedAt: Date.now() };
+    return igMediaCache.data;
+  } catch (error) {
+    console.error('Instagram media fetch error:', error);
+    return [];
+  }
+}
+
+// Get insights for a specific media item
+async function fetchInstagramInsights(mediaId: string, mediaType: string, accessToken: string): Promise<ScrapedMetrics | null> {
+  try {
+    // Different metrics for different media types
+    // Reels: reach, saved, shares, total_interactions
+    // Images/Carousels: impressions, reach, saved
+    const isReel = mediaType === 'VIDEO' || mediaType === 'REELS';
+    const metrics = isReel
+      ? 'reach,saved,shares,total_interactions'
+      : 'impressions,reach,saved';
+
+    const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      // Insights might not be available for all media types
+      const errorText = await response.text();
+      console.log(`No insights available for media ${mediaId}:`, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const insights = data.data || [];
+
+    const reach = insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
+    const impressions = insights.find((i: any) => i.name === 'impressions')?.values?.[0]?.value;
+    const saved = insights.find((i: any) => i.name === 'saved')?.values?.[0]?.value;
+    const shares = insights.find((i: any) => i.name === 'shares')?.values?.[0]?.value;
+
+    return {
+      views: impressions || reach, // Use impressions if available, otherwise reach
+      saves: saved,
+      shares: shares,
+    };
+  } catch (error) {
+    console.error('Instagram insights error:', error);
+    return null;
+  }
+}
+
 // Scrape Instagram metrics using Graph API (requires META_ACCESS_TOKEN)
 export async function scrapeInstagram(url: string): Promise<ScrapedMetrics | null> {
   const accessToken = process.env.META_ACCESS_TOKEN;
@@ -104,47 +182,40 @@ export async function scrapeInstagram(url: string): Promise<ScrapedMetrics | nul
     return null;
   }
 
-  const postId = extractInstagramPostId(url);
-  if (!postId) {
-    console.error('Could not extract Instagram post ID from:', url);
+  const shortcode = extractInstagramPostId(url);
+  if (!shortcode) {
+    console.error('Could not extract Instagram shortcode from:', url);
     return null;
   }
 
   try {
-    // Instagram Graph API - requires Business/Creator account
-    // First, we need the media ID from the shortcode
-    const mediaResponse = await fetch(
-      `https://graph.facebook.com/v19.0/ig_hashtag_search?q=${postId}&access_token=${accessToken}`
+    // Fetch all media and find the one matching our shortcode
+    const allMedia = await fetchInstagramMedia(accessToken);
+    const media = allMedia.find(m =>
+      m.shortcode === shortcode || m.permalink?.includes(shortcode)
     );
 
-    // Actually, for owned media, use the Instagram Insights API
-    // This requires the instagram_basic and instagram_manage_insights permissions
-
-    // For a simpler approach with owned media:
-    const insightsUrl = `https://graph.facebook.com/v19.0/${postId}?fields=like_count,comments_count,insights.metric(reach,impressions,saved)&access_token=${accessToken}`;
-
-    const response = await fetch(insightsUrl);
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Instagram API error:', error);
+    if (!media) {
+      console.error(`Instagram media not found for shortcode: ${shortcode}`);
+      console.log('Available shortcodes:', allMedia.map(m => m.shortcode).join(', '));
       return null;
     }
 
-    const data = await response.json();
-
-    // Extract insights
-    const insights = data.insights?.data || [];
-    const reach = insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
-    const impressions = insights.find((i: any) => i.name === 'impressions')?.values?.[0]?.value;
-    const saved = insights.find((i: any) => i.name === 'saved')?.values?.[0]?.value;
-
-    return {
-      views: impressions || reach,
-      likes: data.like_count,
-      comments: data.comments_count,
-      saves: saved,
+    // Get basic metrics from media object
+    const metrics: ScrapedMetrics = {
+      likes: media.like_count || 0,
+      comments: media.comments_count || 0,
     };
+
+    // Try to get additional insights (views, saves, shares)
+    const insights = await fetchInstagramInsights(media.id, media.media_type, accessToken);
+    if (insights) {
+      metrics.views = insights.views;
+      metrics.saves = insights.saves;
+      metrics.shares = insights.shares;
+    }
+
+    return metrics;
   } catch (error) {
     console.error('Instagram scraping error:', error);
     return null;

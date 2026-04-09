@@ -22,7 +22,11 @@ export interface ContentPost {
   postDate: string | null;
   postUrl: string | null;
 
-  // Metrics
+  // Platform-specific URLs (for multi-platform posts)
+  tiktokUrl?: string | null;
+  igUrl?: string | null;
+
+  // Metrics (combined from all platforms)
   views: number | null;
   likes: number | null;
   comments: number | null;

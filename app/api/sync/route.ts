@@ -19,45 +19,73 @@ export async function GET(request: NextRequest) {
 
   try {
     const posts = await fetchPostedForSync();
-    const results: Array<{ id: string; title: string; success: boolean; error?: string }> = [];
+    const results: Array<{ id: string; title: string; success: boolean; error?: string; platforms?: string[] }> = [];
 
     console.log(`Syncing metrics for ${posts.length} posts...`);
 
     for (const post of posts) {
-      if (!post.postUrl) continue;
+      const syncedPlatforms: string[] = [];
+      const errors: string[] = [];
 
-      try {
-        const metrics = await scrapeMetrics(post.postUrl);
-
-        if (metrics) {
-          await updatePostMetrics(post.id, metrics);
-          results.push({
-            id: post.id,
-            title: post.title,
-            success: true,
-          });
-          console.log(`Synced: ${post.title}`);
-        } else {
-          results.push({
-            id: post.id,
-            title: post.title,
-            success: false,
-            error: 'No metrics returned from scraper',
-          });
+      // Sync TikTok if URL exists
+      if (post.tiktokUrl) {
+        try {
+          const metrics = await scrapeMetrics(post.tiktokUrl);
+          if (metrics) {
+            await updatePostMetrics(post.id, 'TikTok', metrics);
+            syncedPlatforms.push('TikTok');
+            console.log(`Synced TikTok: ${post.title}`);
+          } else {
+            errors.push('TikTok: No metrics returned');
+          }
+        } catch (error) {
+          errors.push(`TikTok: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Sync Instagram if URL exists
+      if (post.igUrl) {
+        try {
+          const metrics = await scrapeMetrics(post.igUrl);
+          if (metrics) {
+            await updatePostMetrics(post.id, 'Instagram', metrics);
+            syncedPlatforms.push('Instagram');
+            console.log(`Synced Instagram: ${post.title}`);
+          } else {
+            errors.push('Instagram: No metrics returned');
+          }
+        } catch (error) {
+          errors.push(`Instagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Record result
+      if (syncedPlatforms.length > 0) {
+        results.push({
+          id: post.id,
+          title: post.title,
+          success: true,
+          platforms: syncedPlatforms,
+        });
+      } else if (errors.length > 0) {
         results.push({
           id: post.id,
           title: post.title,
           success: false,
-          error: errorMessage,
+          error: errors.join('; '),
         });
-        console.error(`Failed to sync ${post.title}:`, error);
+      } else {
+        results.push({
+          id: post.id,
+          title: post.title,
+          success: false,
+          error: 'No URLs to sync',
+        });
       }
-
-      // Rate limiting - wait 1 second between requests
-      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     const successCount = results.filter(r => r.success).length;
