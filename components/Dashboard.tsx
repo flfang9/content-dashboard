@@ -15,7 +15,7 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import { ContentPost, DashboardStats } from '@/types';
+import { ContentPost, DashboardStats, GrowthData, GrowthSnapshot } from '@/types';
 
 // Extract video ID from TikTok URL
 function getTikTokVideoId(url: string): string | null {
@@ -301,6 +301,7 @@ export default function Dashboard() {
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<ContentPost | null>(null);
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
+  const [growthData, setGrowthData] = useState<GrowthData | null>(null);
 
   const handleVideoClick = useCallback((post: ContentPost) => {
     setSelectedVideo(post);
@@ -350,6 +351,18 @@ export default function Dashboard() {
     };
   })();
 
+  const fetchGrowthData = async () => {
+    try {
+      const response = await fetch('/api/growth?days=30');
+      if (response.ok) {
+        const data = await response.json();
+        setGrowthData(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch growth data:', err);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -364,6 +377,9 @@ export default function Dashboard() {
       setStats(data.stats);
       setLastFetched(data.fetchedAt);
       setError(null);
+
+      // Also fetch growth data
+      await fetchGrowthData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -735,6 +751,139 @@ export default function Dashboard() {
               <span className="flex items-center gap-2">
                 <span className="w-3 h-0.5 bg-green-500 rounded" />
                 Engagement %
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Growth Over Time */}
+        {growthData && growthData.snapshots.length > 0 && (
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-5 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-400">Growth Over Time</h3>
+              {growthData.weekOverWeek && (
+                <div className="flex items-center gap-4">
+                  {growthData.weekOverWeek.tiktokFollowers.change !== 0 && (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-[#00f2ea]" />
+                      <span className={growthData.weekOverWeek.tiktokFollowers.change > 0 ? 'text-green-400' : 'text-red-400'}>
+                        {growthData.weekOverWeek.tiktokFollowers.change > 0 ? '+' : ''}
+                        {formatNumber(growthData.weekOverWeek.tiktokFollowers.change)}
+                        <span className="text-gray-500 ml-1">
+                          ({growthData.weekOverWeek.tiktokFollowers.changePercent > 0 ? '+' : ''}
+                          {growthData.weekOverWeek.tiktokFollowers.changePercent}%)
+                        </span>
+                      </span>
+                    </span>
+                  )}
+                  {growthData.weekOverWeek.instagramFollowers.change !== 0 && (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="w-2 h-2 rounded-full bg-[#e4405f]" />
+                      <span className={growthData.weekOverWeek.instagramFollowers.change > 0 ? 'text-green-400' : 'text-red-400'}>
+                        {growthData.weekOverWeek.instagramFollowers.change > 0 ? '+' : ''}
+                        {formatNumber(growthData.weekOverWeek.instagramFollowers.change)}
+                        <span className="text-gray-500 ml-1">
+                          ({growthData.weekOverWeek.instagramFollowers.changePercent > 0 ? '+' : ''}
+                          {growthData.weekOverWeek.instagramFollowers.changePercent}%)
+                        </span>
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Follower Stats Cards */}
+            {growthData.latest && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#00f2ea]" />
+                    <span className="text-xs text-gray-500">TikTok Followers</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatNumber(growthData.latest.tiktokFollowers)}
+                  </p>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#e4405f]" />
+                    <span className="text-xs text-gray-500">Instagram Followers</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatNumber(growthData.latest.instagramFollowers)}
+                  </p>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#00f2ea]" />
+                    <span className="text-xs text-gray-500">TikTok Videos</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {growthData.latest.tiktokVideos}
+                  </p>
+                </div>
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-[#e4405f]" />
+                    <span className="text-xs text-gray-500">Instagram Posts</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {growthData.latest.instagramPosts}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Growth Chart */}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={growthData.snapshots.map(s => ({
+                  date: new Date(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                  tiktok: s.tiktokFollowers,
+                  instagram: s.instagramFollowers,
+                }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                  <XAxis dataKey="date" tick={{ fill: '#666', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#666', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1a1a1a',
+                      border: '1px solid #262626',
+                      borderRadius: '8px',
+                    }}
+                    formatter={(value: number, name: string) => [
+                      formatNumber(value),
+                      name === 'tiktok' ? 'TikTok' : 'Instagram'
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="tiktok"
+                    stroke="#00f2ea"
+                    strokeWidth={2}
+                    dot={{ fill: '#00f2ea', r: 3 }}
+                    name="TikTok"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="instagram"
+                    stroke="#e4405f"
+                    strokeWidth={2}
+                    dot={{ fill: '#e4405f', r: 3 }}
+                    name="Instagram"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex items-center gap-6 mt-2 text-xs text-gray-500">
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-0.5 bg-[#00f2ea] rounded" />
+                TikTok Followers
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-0.5 bg-[#e4405f] rounded" />
+                Instagram Followers
               </span>
             </div>
           </div>

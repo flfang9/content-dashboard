@@ -6,6 +6,21 @@ const notion = new Client({
 });
 
 const databaseId = process.env.NOTION_DATABASE_ID!;
+const growthDatabaseId = process.env.NOTION_GROWTH_DATABASE_ID;
+
+// Growth snapshot type for tracking follower counts over time
+export interface GrowthSnapshot {
+  date: string;
+  tiktokFollowers: number;
+  tiktokTotalLikes: number;
+  tiktokVideos: number;
+  instagramFollowers: number;
+  instagramPosts: number;
+  tiktokViews: number;
+  tiktokLikes: number;
+  instagramViews: number;
+  instagramLikes: number;
+}
 
 // Helper to extract property values from Notion pages
 function getPropertyValue(property: any): any {
@@ -237,4 +252,196 @@ export function calculateStats(posts: ContentPost[]) {
     postsThisWeek,
     topPerformer,
   };
+}
+
+// ─── Instagram Auto-Import Functions ───────────────────────────────────────────
+
+// Extract Instagram shortcode from URL for deduplication
+function extractIgShortcode(url: string): string | null {
+  const match = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+  return match ? match[2] : null;
+}
+
+// Get all existing Instagram shortcodes in the database (for deduplication)
+export async function getExistingInstagramShortcodes(): Promise<Set<string>> {
+  const shortcodes = new Set<string>();
+  let cursor: string | undefined;
+
+  do {
+    const response: any = await notion.databases.query({
+      database_id: databaseId,
+      start_cursor: cursor,
+      filter: {
+        property: 'Instagram URL',
+        url: {
+          is_not_empty: true,
+        },
+      },
+    });
+
+    for (const page of response.results) {
+      const url = getPropertyValue(page.properties['Instagram URL']);
+      if (url) {
+        const shortcode = extractIgShortcode(url);
+        if (shortcode) shortcodes.add(shortcode);
+      }
+    }
+
+    cursor = response.has_more ? response.next_cursor : undefined;
+  } while (cursor);
+
+  return shortcodes;
+}
+
+// Create a new Instagram post entry
+export async function createInstagramPost(post: {
+  title: string;
+  url: string;
+  postDate?: string;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saves?: number;
+}): Promise<string> {
+  const properties: Record<string, any> = {
+    Title: { title: [{ text: { content: post.title } }] },
+    Status: { select: { name: 'Posted' } },
+    'Instagram URL': { url: post.url },
+  };
+
+  if (post.postDate) {
+    properties['Post Date'] = { date: { start: post.postDate } };
+  }
+  if (post.views !== undefined) {
+    properties['IG Views'] = { number: post.views };
+  }
+  if (post.likes !== undefined) {
+    properties['IG Likes'] = { number: post.likes };
+  }
+  if (post.comments !== undefined) {
+    properties['IG Comments'] = { number: post.comments };
+  }
+  if (post.shares !== undefined) {
+    properties['IG Shares'] = { number: post.shares };
+  }
+  if (post.saves !== undefined) {
+    properties['IG Saves'] = { number: post.saves };
+  }
+
+  const response = await notion.pages.create({
+    parent: { database_id: databaseId },
+    properties,
+  });
+
+  return response.id;
+}
+
+// ─── Growth Tracking Functions ─────────────────────────────────────────────────
+
+// Create a daily growth snapshot
+export async function createGrowthSnapshot(data: GrowthSnapshot): Promise<void> {
+  if (!growthDatabaseId) {
+    console.log('NOTION_GROWTH_DATABASE_ID not set, skipping growth snapshot');
+    return;
+  }
+
+  try {
+    await notion.pages.create({
+      parent: { database_id: growthDatabaseId },
+      properties: {
+        // Date is the title field
+        Date: {
+          title: [{ text: { content: data.date } }],
+        },
+        // TikTok Account Stats
+        'TikTok Followers': { number: data.tiktokFollowers || null },
+        'TikTok Total Likes': { number: data.tiktokTotalLikes || null },
+        'TikTok Videos': { number: data.tiktokVideos || null },
+        // Instagram Account Stats
+        'Instagram Followers': { number: data.instagramFollowers || null },
+        'Instagram Posts': { number: data.instagramPosts || null },
+        // Aggregated Post Metrics
+        'TikTok Views': { number: data.tiktokViews || null },
+        'TikTok Likes': { number: data.tiktokLikes || null },
+        'Instagram Views': { number: data.instagramViews || null },
+        'Instagram Likes': { number: data.instagramLikes || null },
+      },
+    });
+
+    console.log(`Growth snapshot created for ${data.date}`);
+  } catch (error) {
+    console.error('Error creating growth snapshot:', error);
+    throw error;
+  }
+}
+
+// Fetch growth history for the last N days
+export async function fetchGrowthHistory(days: number = 30): Promise<GrowthSnapshot[]> {
+  if (!growthDatabaseId) {
+    console.log('NOTION_GROWTH_DATABASE_ID not set, returning empty growth history');
+    return [];
+  }
+
+  try {
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const response = await notion.databases.query({
+      database_id: growthDatabaseId,
+      sorts: [
+        {
+          property: 'Date',
+          direction: 'ascending',
+        },
+      ],
+      page_size: Math.min(days + 1, 100), // Notion max is 100
+    });
+
+    return response.results.map((page: any) => {
+      const props = page.properties;
+      return {
+        date: getPropertyValue(props['Date']) || '',
+        tiktokFollowers: getPropertyValue(props['TikTok Followers']) || 0,
+        tiktokTotalLikes: getPropertyValue(props['TikTok Total Likes']) || 0,
+        tiktokVideos: getPropertyValue(props['TikTok Videos']) || 0,
+        instagramFollowers: getPropertyValue(props['Instagram Followers']) || 0,
+        instagramPosts: getPropertyValue(props['Instagram Posts']) || 0,
+        tiktokViews: getPropertyValue(props['TikTok Views']) || 0,
+        tiktokLikes: getPropertyValue(props['TikTok Likes']) || 0,
+        instagramViews: getPropertyValue(props['Instagram Views']) || 0,
+        instagramLikes: getPropertyValue(props['Instagram Likes']) || 0,
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching growth history:', error);
+    return [];
+  }
+}
+
+// Check if a snapshot already exists for today (avoid duplicates)
+export async function hasSnapshotForToday(): Promise<boolean> {
+  if (!growthDatabaseId) return false;
+
+  const today = new Date().toISOString().split('T')[0];
+
+  try {
+    const response = await notion.databases.query({
+      database_id: growthDatabaseId,
+      filter: {
+        property: 'Date',
+        title: {
+          equals: today,
+        },
+      },
+      page_size: 1,
+    });
+
+    return response.results.length > 0;
+  } catch (error) {
+    console.error('Error checking for existing snapshot:', error);
+    return false;
+  }
 }

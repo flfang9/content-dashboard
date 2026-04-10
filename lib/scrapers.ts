@@ -8,6 +8,19 @@ interface ScrapedMetrics {
   saves?: number;
 }
 
+// Account-level stats for growth tracking
+export interface TikTokProfileStats {
+  followers: number;
+  following: number;
+  likes: number;
+  videos: number;
+}
+
+export interface InstagramAccountStats {
+  followers: number;
+  postsCount: number;
+}
+
 // Extract TikTok video ID from URL
 function extractTikTokVideoId(url: string): string | null {
   // Formats:
@@ -99,6 +112,26 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
 let igMediaCache: { data: any[]; fetchedAt: number } | null = null;
 const IG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Clear the Instagram media cache (call before sync to get fresh data)
+export function clearInstagramCache(): void {
+  igMediaCache = null;
+}
+
+// Instagram media item with metrics
+export interface InstagramMediaItem {
+  id: string;
+  shortcode: string;
+  permalink: string;
+  caption: string | null;
+  mediaType: string;
+  timestamp: string;
+  likes: number;
+  comments: number;
+  views?: number;
+  saves?: number;
+  shares?: number;
+}
+
 // Fetch all media from Instagram account
 async function fetchInstagramMedia(accessToken: string): Promise<any[]> {
   // Check cache
@@ -131,6 +164,49 @@ async function fetchInstagramMedia(accessToken: string): Promise<any[]> {
     console.error('Instagram media fetch error:', error);
     return [];
   }
+}
+
+// Fetch all Instagram media with full metrics (for auto-import)
+export async function fetchAllInstagramMedia(): Promise<InstagramMediaItem[]> {
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  if (!accessToken) {
+    console.log('No META_ACCESS_TOKEN, skipping Instagram fetch');
+    return [];
+  }
+
+  // Clear cache to get fresh data
+  clearInstagramCache();
+
+  const allMedia = await fetchInstagramMedia(accessToken);
+  const enrichedMedia: InstagramMediaItem[] = [];
+
+  for (const media of allMedia) {
+    const item: InstagramMediaItem = {
+      id: media.id,
+      shortcode: media.shortcode,
+      permalink: media.permalink,
+      caption: media.caption || null,
+      mediaType: media.media_type,
+      timestamp: media.timestamp,
+      likes: media.like_count || 0,
+      comments: media.comments_count || 0,
+    };
+
+    // Fetch insights for this media
+    const insights = await fetchInstagramInsights(media.id, media.media_type, accessToken);
+    if (insights) {
+      item.views = insights.views;
+      item.saves = insights.saves;
+      item.shares = insights.shares;
+    }
+
+    enrichedMedia.push(item);
+
+    // Rate limit
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  return enrichedMedia;
 }
 
 // Get insights for a specific media item
@@ -235,4 +311,88 @@ export async function scrapeMetrics(url: string): Promise<ScrapedMetrics | null>
   // YouTube, Twitter, etc. can be added here
   console.log('Unsupported platform for URL:', url);
   return null;
+}
+
+// ─── TikTok Profile Scraper (Account-Level Stats) ─────────────────────────────
+
+export async function scrapeTikTokProfile(username: string): Promise<TikTokProfileStats | null> {
+  try {
+    const url = `https://www.tiktok.com/@${username}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`TikTok profile fetch failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+
+    const scriptMatch = html.match(
+      /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/
+    );
+
+    if (!scriptMatch) {
+      console.error('TikTok profile: Could not find data script');
+      return null;
+    }
+
+    const jsonData = JSON.parse(scriptMatch[1]);
+    const userInfo =
+      jsonData?.['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.['userInfo'];
+
+    if (!userInfo?.stats) {
+      console.error('TikTok profile: No stats found in data');
+      return null;
+    }
+
+    return {
+      followers: userInfo.stats.followerCount || 0,
+      following: userInfo.stats.followingCount || 0,
+      likes: userInfo.stats.heartCount || 0,
+      videos: userInfo.stats.videoCount || 0,
+    };
+  } catch (error) {
+    console.error('TikTok profile scraping error:', error);
+    return null;
+  }
+}
+
+// ─── Instagram Account Stats (via Graph API) ─────────────────────────────────
+
+export async function getInstagramAccountStats(): Promise<InstagramAccountStats | null> {
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  const igUserId = process.env.IG_USER_ID;
+
+  if (!accessToken || !igUserId) {
+    console.log('No META_ACCESS_TOKEN or IG_USER_ID, skipping Instagram account stats');
+    return null;
+  }
+
+  try {
+    // Fetch account info with followers_count and media_count
+    const url = `https://graph.facebook.com/v19.0/${igUserId}?fields=followers_count,media_count&access_token=${accessToken}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Instagram account stats error:', error);
+      return null;
+    }
+
+    const data = await response.json();
+
+    return {
+      followers: data.followers_count || 0,
+      postsCount: data.media_count || 0,
+    };
+  } catch (error) {
+    console.error('Instagram account stats error:', error);
+    return null;
+  }
 }

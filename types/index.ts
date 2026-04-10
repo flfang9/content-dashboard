@@ -53,3 +53,36 @@ export interface NotionPage {
   properties: Record<string, any>;
   created_time: string;
 }
+
+export interface GrowthSnapshot {
+  date: string;
+  tiktokFollowers: number;
+  tiktokTotalLikes: number;
+  tiktokVideos: number;
+  instagramFollowers: number;
+  instagramPosts: number;
+  tiktokViews: number;
+  tiktokLikes: number;
+  instagramViews: number;
+  instagramLikes: number;
+}
+
+export interface GrowthData {
+  snapshots: GrowthSnapshot[];
+  latest: GrowthSnapshot | null;
+  weekOverWeek: {
+    tiktokFollowers: {
+      current: number;
+      previous: number;
+      change: number;
+      changePercent: number;
+    };
+    instagramFollowers: {
+      current: number;
+      previous: number;
+      change: number;
+      changePercent: number;
+    };
+  } | null;
+  fetchedAt: string;
+}
