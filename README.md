@@ -11,70 +11,87 @@ A self-hosted dashboard that syncs your TikTok and Instagram metrics to Notion a
 - **Auto-sync** - Daily cron job keeps metrics updated
 - **Dashboard** - Clean web UI with charts and stats
 
-## Quick Start
+---
 
-### 1. Duplicate the Notion Template
+## Setup (3 Steps)
 
-**[Click here to duplicate the Content Calendar template](https://distinct-oboe-31d.notion.site/56652a8b99df82fe9c97014d45d406ab?v=96e52a8b99df83c982f608f8c11c6fc7)**
+### Step 1: Get Your Notion Template
 
-Click "Duplicate" in the top right to add it to your workspace.
+**[→ Click here to duplicate the Content Calendar template](https://distinct-oboe-31d.notion.site/56652a8b99df82fe9c97014d45d406ab?v=96e52a8b99df83c982f608f8c11c6fc7)**
 
-### 2. Create Notion Integration
+Click "Duplicate" in the top right corner to add it to your Notion workspace.
 
-1. Go to [notion.so/my-integrations](https://notion.so/my-integrations)
-2. Click **New Integration** → Name it anything → Submit
-3. Copy the **Internal Integration Secret**
-4. Go back to your Content Calendar → Click `...` → **Connections** → Add your integration
+### Step 2: Create a Notion Integration
 
-### 3. Clone and Deploy to Vercel
+1. Go to **[notion.so/my-integrations](https://notion.so/my-integrations)**
+2. Click **"New Integration"**
+3. Name it anything (e.g., "Content Dashboard")
+4. Click **Submit**
+5. Copy the **"Internal Integration Secret"** (starts with `secret_`)
+6. Go back to your Content Calendar in Notion
+7. Click the `•••` menu in the top right → **"Connections"** → Add your integration
 
-```bash
-git clone https://github.com/flfang9/content-dashboard.git
-cd content-dashboard
-npm install
-npm i -g vercel
-vercel --prod
-```
+### Step 3: Deploy to Vercel
 
-### 4. Add Environment Variables in Vercel
+Click the button below to deploy your dashboard:
 
-Go to your [Vercel dashboard](https://vercel.com) → Project Settings → Environment Variables
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fflfang9%2Fcontent-dashboard&env=NOTION_API_KEY,NOTION_DATABASE_ID,CRON_SECRET&envDescription=Required%20environment%20variables&envLink=https%3A%2F%2Fgithub.com%2Fflfang9%2Fcontent-dashboard%23environment-variables)
 
-**Required:**
-| Variable | Where to get it |
-|----------|-----------------|
-| `NOTION_API_KEY` | Your integration secret from step 2 |
-| `NOTION_DATABASE_ID` | From your Notion URL: `notion.so/DATABASE_ID?v=...` |
-| `CRON_SECRET` | Any random string (protects your sync endpoint) |
+You'll be asked to fill in these values:
 
-**Optional - TikTok follower tracking:**
-| Variable | Where to get it |
-|----------|-----------------|
-| `TIKTOK_USERNAME` | Your TikTok username without @ |
+| Variable | What to enter |
+|----------|---------------|
+| `NOTION_API_KEY` | The integration secret you copied (starts with `secret_`) |
+| `NOTION_DATABASE_ID` | From your Notion URL: `notion.so/`**`THIS-PART`**`?v=...` |
+| `CRON_SECRET` | Make up any random string (e.g., `my-secret-123`) |
 
-**Optional - Instagram metrics:**
-| Variable | Where to get it |
-|----------|-----------------|
-| `META_ACCESS_TOKEN` | Facebook Developer App (requires Business/Creator IG account) |
+**That's it!** Your dashboard will be live at your Vercel URL.
+
+---
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `NOTION_API_KEY` | Your Notion integration secret |
+| `NOTION_DATABASE_ID` | Your content calendar database ID |
+| `CRON_SECRET` | Protects your sync endpoint from unauthorized access |
+
+### Optional - TikTok Follower Tracking
+
+| Variable | Description |
+|----------|-------------|
+| `TIKTOK_USERNAME` | Your TikTok username (without the @) |
+
+### Optional - Instagram Metrics
+
+| Variable | Description |
+|----------|-------------|
+| `META_ACCESS_TOKEN` | Facebook Graph API token (requires Business/Creator Instagram account) |
 | `IG_USER_ID` | Your Instagram Business account ID |
 
-**Optional - Growth tracking database:**
-| Variable | Where to get it |
-|----------|-----------------|
-| `NOTION_GROWTH_DATABASE_ID` | Run `node scripts/setup-growth-db.js` to create |
+### Optional - Growth Tracking
 
-### 5. You're Done!
+| Variable | Description |
+|----------|-------------|
+| `NOTION_GROWTH_DATABASE_ID` | Tracks follower growth over time. See [Growth Tracking Setup](#growth-tracking-setup) |
 
-- **Dashboard**: Visit your Vercel URL
-- **Auto-sync**: Runs daily at 9am UTC (configured in `vercel.json`)
-- **Manual sync**: Click "Sync Now" in the dashboard or hit `/api/sync`
+To add these later: Vercel Dashboard → Your Project → Settings → Environment Variables
+
+---
 
 ## Usage
 
 1. **Add content to Notion** - Create rows with your post ideas
-2. **Post your content** - When you post, add the URL to `TikTok URL` or `Instagram URL` column
+2. **Post your content** - Add the URL to `TikTok URL` or `Instagram URL` column
 3. **Set status to "Posted"** - Metrics will sync automatically
-4. **Check your dashboard** - See all your stats at your Vercel URL
+4. **Check your dashboard** - Visit your Vercel URL to see stats
+
+**Auto-sync** runs daily at 9am UTC. You can also click "Sync Now" in the dashboard.
+
+---
 
 ## What Gets Tracked
 
@@ -87,23 +104,49 @@ Go to your [Vercel dashboard](https://vercel.com) → Project Settings → Envir
 | Saves/Bookmarks | ✅ | ✅ |
 | Followers | ✅ | ✅ |
 
-## How It Works
+---
 
-### TikTok (No API needed)
+## Growth Tracking Setup
 
-- **Follower tracking**: Add `TIKTOK_USERNAME` to Vercel env vars
-- **Video metrics**: Paste video URLs into the `TikTok URL` column in Notion
-- Example URL: `https://www.tiktok.com/@yourusername/video/1234567890`
+To track follower growth over time:
 
-### Instagram (Optional)
+1. Open your Notion Content Calendar
+2. Copy the page ID from the URL
+3. Run this in terminal (or ask ChatGPT to help):
+   ```bash
+   NOTION_API_KEY=secret_xxx NOTION_PAGE_ID=xxx node scripts/setup-growth-db.js
+   ```
+4. Add the new database ID to Vercel as `NOTION_GROWTH_DATABASE_ID`
 
-Requires Instagram Business/Creator account connected to a Facebook Page:
-1. Create a Facebook Developer App
-2. Add Instagram Graph API
-3. Generate a long-lived access token
-4. Add `META_ACCESS_TOKEN` and `IG_USER_ID` to Vercel
+---
 
-## Project Structure
+## For Developers
+
+### Manual Setup (Alternative to Deploy Button)
+
+```bash
+git clone https://github.com/flfang9/content-dashboard.git
+cd content-dashboard
+npm install
+cp .env.example .env
+# Edit .env with your credentials
+npm run dev        # Local development
+vercel --prod      # Deploy to Vercel
+```
+
+### Local Sync Script
+
+Run sync locally instead of using Vercel cron:
+
+```bash
+cd sync
+npm install
+cp .env.example .env
+# Edit .env
+node sync.js
+```
+
+### Project Structure
 
 ```
 content-dashboard/
@@ -111,35 +154,17 @@ content-dashboard/
 ├── components/          # React components
 ├── lib/                 # Notion client + scrapers
 ├── scripts/             # Setup scripts
-│   ├── setup-notion.js  # Auto-create content database
-│   └── setup-growth-db.js # Create growth tracking database
-└── vercel.json          # Cron job config
+└── vercel.json          # Cron job config (daily sync)
 ```
 
-## Alternative: Local Sync Script
+### Tech Stack
 
-If you prefer running sync locally instead of Vercel cron:
+- Next.js, React, Tailwind CSS, Recharts
+- Vercel serverless functions
+- Notion API
+- Puppeteer (TikTok scraping)
 
-```bash
-cd sync
-npm install
-cp .env.example .env
-# Edit .env with your credentials
-node sync.js
-```
-
-Set up daily cron:
-```bash
-crontab -e
-# Add: 0 8 * * * cd /path/to/content-dashboard/sync && node sync.js
-```
-
-## Tech Stack
-
-- **Frontend**: Next.js, React, Tailwind CSS, Recharts
-- **Backend**: Vercel serverless functions
-- **Database**: Notion API
-- **Scraping**: Puppeteer (TikTok), Meta Graph API (Instagram)
+---
 
 ## License
 
