@@ -101,8 +101,15 @@ function pageToPost(page: any): ContentPost {
     comments,
     shares,
     saves,
-    // Use Calculated Engagement (number) if available, fall back to formula
-    engagementRate: getPropertyValue(props['Calculated Engagement']) ?? getPropertyValue(props['Total Engagement']),
+    // Use Calculated Engagement (stored as decimal, e.g. 0.0843 for 8.43%)
+    // Multiply by 100 to get percentage for display
+    engagementRate: (() => {
+      const calculated = getPropertyValue(props['Calculated Engagement']);
+      if (calculated !== null && calculated !== undefined) {
+        return calculated * 100; // Convert 0.0843 to 8.43
+      }
+      return getPropertyValue(props['Total Engagement']); // Fallback to old formula
+    })(),
 
     // Platform-specific metrics (for filtering)
     tiktokViews,
@@ -247,13 +254,13 @@ export async function updateEngagementRate(pageId: string): Promise<void> {
     const totalViews = tiktokViews + igViews;
     const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares;
 
-    // Calculate engagement rate as percentage
-    const engagementRate = totalViews > 0 ? (totalEngagements / totalViews) * 100 : 0;
+    // Calculate engagement rate as decimal (Notion percent format expects 0.0843 for 8.43%)
+    const engagementRate = totalViews > 0 ? totalEngagements / totalViews : 0;
 
-    // Round to 2 decimal places
-    const roundedRate = Math.round(engagementRate * 100) / 100;
+    // Round to 4 decimal places
+    const roundedRate = Math.round(engagementRate * 10000) / 10000;
 
-    console.log(`Updating engagement rate for ${pageId}: ${roundedRate}% (${totalEngagements} engagements / ${totalViews} views)`);
+    console.log(`Updating engagement rate for ${pageId}: ${(roundedRate * 100).toFixed(2)}% (${totalEngagements} engagements / ${totalViews} views)`);
 
     // Update the Calculated Engagement field (create if using number field)
     await notion.pages.update({
