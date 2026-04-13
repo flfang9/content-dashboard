@@ -22,6 +22,23 @@ export interface GrowthSnapshot {
   instagramLikes: number;
 }
 
+function buildGrowthSnapshotProperties(data: GrowthSnapshot): Record<string, any> {
+  return {
+    Date: {
+      title: [{ text: { content: data.date } }],
+    },
+    'TikTok Followers': { number: data.tiktokFollowers || null },
+    'TikTok Total Likes': { number: data.tiktokTotalLikes || null },
+    'TikTok Videos': { number: data.tiktokVideos || null },
+    'Instagram Followers': { number: data.instagramFollowers || null },
+    'Instagram Posts': { number: data.instagramPosts || null },
+    'TikTok Views': { number: data.tiktokViews || null },
+    'TikTok Likes': { number: data.tiktokLikes || null },
+    'Instagram Views': { number: data.instagramViews || null },
+    'Instagram Likes': { number: data.instagramLikes || null },
+  };
+}
+
 // Helper to extract property values from Notion pages
 function getPropertyValue(property: any): any {
   if (!property) return null;
@@ -407,24 +424,7 @@ export async function createGrowthSnapshot(data: GrowthSnapshot): Promise<void> 
   try {
     await notion.pages.create({
       parent: { database_id: growthDatabaseId },
-      properties: {
-        // Date is the title field
-        Date: {
-          title: [{ text: { content: data.date } }],
-        },
-        // TikTok Account Stats
-        'TikTok Followers': { number: data.tiktokFollowers || null },
-        'TikTok Total Likes': { number: data.tiktokTotalLikes || null },
-        'TikTok Videos': { number: data.tiktokVideos || null },
-        // Instagram Account Stats
-        'Instagram Followers': { number: data.instagramFollowers || null },
-        'Instagram Posts': { number: data.instagramPosts || null },
-        // Aggregated Post Metrics
-        'TikTok Views': { number: data.tiktokViews || null },
-        'TikTok Likes': { number: data.tiktokLikes || null },
-        'Instagram Views': { number: data.instagramViews || null },
-        'Instagram Likes': { number: data.instagramLikes || null },
-      },
+      properties: buildGrowthSnapshotProperties(data),
     });
 
     console.log(`Growth snapshot created for ${data.date}`);
@@ -432,6 +432,37 @@ export async function createGrowthSnapshot(data: GrowthSnapshot): Promise<void> 
     console.error('Error creating growth snapshot:', error);
     throw error;
   }
+}
+
+export async function upsertGrowthSnapshot(data: GrowthSnapshot): Promise<'created' | 'updated'> {
+  if (!growthDatabaseId) {
+    console.log('NOTION_GROWTH_DATABASE_ID not set, skipping growth snapshot upsert');
+    return 'created';
+  }
+
+  const response = await notion.databases.query({
+    database_id: growthDatabaseId,
+    filter: {
+      property: 'Date',
+      title: {
+        equals: data.date,
+      },
+    },
+    page_size: 1,
+  });
+
+  const existingPage = response.results[0] as any;
+  if (existingPage) {
+    await notion.pages.update({
+      page_id: existingPage.id,
+      properties: buildGrowthSnapshotProperties(data),
+    });
+    console.log(`Growth snapshot updated for ${data.date}`);
+    return 'updated';
+  }
+
+  await createGrowthSnapshot(data);
+  return 'created';
 }
 
 // Fetch growth history for the last N days

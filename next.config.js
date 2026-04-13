@@ -12,6 +12,9 @@ const nextConfig = {
       },
     ],
   },
+  outputFileTracingIncludes: {
+    '/api/sync': ['node_modules/@sparticuz/chromium/bin/**/*'],
+  },
 };
 
 module.exports = nextConfig;

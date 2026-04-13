@@ -14,8 +14,10 @@ import {
   Cell,
   LineChart,
   Line,
+  ComposedChart,
+  Legend,
 } from 'recharts';
-import { ContentPost, DashboardStats, GrowthData, GrowthSnapshot } from '@/types';
+import { ContentPost, GrowthData } from '@/types';
 
 // Extract video ID from TikTok URL
 function getTikTokVideoId(url: string): string | null {
@@ -184,6 +186,59 @@ function formatNumber(num: number): string {
   return num.toString();
 }
 
+function hasMetricValue(value: number | null | undefined): boolean {
+  return value !== null && value !== undefined;
+}
+
+function displayMetric(value: number | null | undefined): string {
+  return hasMetricValue(value) ? formatNumber(value || 0) : '-';
+}
+
+type PlatformFilter = 'all' | 'tiktok' | 'instagram';
+
+function getViewsForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'tiktok') return post.tiktokViews || 0;
+  if (filter === 'instagram') return post.igViews || 0;
+  return post.views || 0;
+}
+
+function getLikesForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'tiktok') return post.tiktokLikes || 0;
+  if (filter === 'instagram') return post.igLikes || 0;
+  return post.likes || 0;
+}
+
+function getCommentsForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'tiktok') return post.tiktokComments || 0;
+  if (filter === 'instagram') return post.igComments || 0;
+  return post.comments || 0;
+}
+
+function getSharesForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'tiktok') return post.tiktokShares || 0;
+  if (filter === 'instagram') return post.igShares || 0;
+  return post.shares || 0;
+}
+
+function getSavesForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'instagram') return post.igSaves || 0;
+  if (filter === 'tiktok') return post.saves || 0;
+  return post.saves || 0;
+}
+
+function getEngagementForFilter(post: ContentPost, filter: PlatformFilter): number {
+  if (filter === 'all') return post.engagementRate || 0;
+
+  const views = getViewsForFilter(post, filter);
+  const engagements =
+    getLikesForFilter(post, filter) +
+    getCommentsForFilter(post, filter) +
+    getSharesForFilter(post, filter);
+
+  if (views <= 0) return 0;
+  return Math.round(((engagements / views) * 100) * 100) / 100;
+}
+
 function StatCard({
   title,
   value,
@@ -212,9 +267,20 @@ function StatCard({
   );
 }
 
-function PostRow({ post, onVideoClick }: { post: ContentPost; onVideoClick: (post: ContentPost) => void }) {
+function PostRow({
+  post,
+  onVideoClick,
+  platformFilter,
+}: {
+  post: ContentPost;
+  onVideoClick: (post: ContentPost) => void;
+  platformFilter: PlatformFilter;
+}) {
   const hasVideo = post.status === 'Posted' && post.postUrl;
   const hasBothPlatforms = post.tiktokUrl && post.igUrl;
+  const views = getViewsForFilter(post, platformFilter);
+  const likes = getLikesForFilter(post, platformFilter);
+  const engagement = getEngagementForFilter(post, platformFilter);
 
   return (
     <tr className="border-b border-[#262626] hover:bg-[#1a1a1a] transition-colors">
@@ -275,13 +341,13 @@ function PostRow({ post, onVideoClick }: { post: ContentPost; onVideoClick: (pos
         </span>
       </td>
       <td className="py-3 px-4 text-right text-gray-300">
-        {post.views ? formatNumber(post.views) : '-'}
+        {displayMetric(views)}
       </td>
       <td className="py-3 px-4 text-right text-gray-300">
-        {post.likes ? formatNumber(post.likes) : '-'}
+        {displayMetric(likes)}
       </td>
       <td className="py-3 px-4 text-right text-gray-300">
-        {post.engagementRate ? `${post.engagementRate.toFixed(2)}%` : '-'}
+        {hasMetricValue(engagement) ? `${engagement.toFixed(2)}%` : '-'}
       </td>
       <td className="py-3 px-4 text-right text-gray-500 text-sm">
         {post.postDate ? new Date(post.postDate).toLocaleDateString() : '-'}
@@ -290,11 +356,8 @@ function PostRow({ post, onVideoClick }: { post: ContentPost; onVideoClick: (pos
   );
 }
 
-type PlatformFilter = 'all' | 'tiktok' | 'instagram';
-
 export default function Dashboard() {
   const [posts, setPosts] = useState<ContentPost[]>([]);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -302,6 +365,7 @@ export default function Dashboard() {
   const [selectedVideo, setSelectedVideo] = useState<ContentPost | null>(null);
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
   const [growthData, setGrowthData] = useState<GrowthData | null>(null);
+  const [growthError, setGrowthError] = useState<string | null>(null);
 
   const handleVideoClick = useCallback((post: ContentPost) => {
     setSelectedVideo(post);
@@ -323,37 +387,11 @@ export default function Dashboard() {
   const filteredStats = (() => {
     const postedPosts = filteredPosts.filter(p => p.status === 'Posted');
 
-    // Use platform-specific metrics when filtering by platform
-    const getViews = (p: ContentPost) => {
-      if (platformFilter === 'tiktok') return p.tiktokViews || 0;
-      if (platformFilter === 'instagram') return p.igViews || 0;
-      return p.views || 0;
-    };
-    const getLikes = (p: ContentPost) => {
-      if (platformFilter === 'tiktok') return p.tiktokLikes || 0;
-      if (platformFilter === 'instagram') return p.igLikes || 0;
-      return p.likes || 0;
-    };
-    const getComments = (p: ContentPost) => {
-      if (platformFilter === 'tiktok') return p.tiktokComments || 0;
-      if (platformFilter === 'instagram') return p.igComments || 0;
-      return p.comments || 0;
-    };
-    const getShares = (p: ContentPost) => {
-      if (platformFilter === 'tiktok') return p.tiktokShares || 0;
-      if (platformFilter === 'instagram') return p.igShares || 0;
-      return p.shares || 0;
-    };
-    const getSaves = (p: ContentPost) => {
-      if (platformFilter === 'instagram') return p.igSaves || 0;
-      return p.saves || 0;
-    };
-
-    const totalViews = postedPosts.reduce((sum, p) => sum + getViews(p), 0);
-    const totalLikes = postedPosts.reduce((sum, p) => sum + getLikes(p), 0);
-    const totalComments = postedPosts.reduce((sum, p) => sum + getComments(p), 0);
-    const totalShares = postedPosts.reduce((sum, p) => sum + getShares(p), 0);
-    const totalSaves = postedPosts.reduce((sum, p) => sum + getSaves(p), 0);
+    const totalViews = postedPosts.reduce((sum, p) => sum + getViewsForFilter(p, platformFilter), 0);
+    const totalLikes = postedPosts.reduce((sum, p) => sum + getLikesForFilter(p, platformFilter), 0);
+    const totalComments = postedPosts.reduce((sum, p) => sum + getCommentsForFilter(p, platformFilter), 0);
+    const totalShares = postedPosts.reduce((sum, p) => sum + getSharesForFilter(p, platformFilter), 0);
+    const totalSaves = postedPosts.reduce((sum, p) => sum + getSavesForFilter(p, platformFilter), 0);
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
@@ -362,8 +400,8 @@ export default function Dashboard() {
     ).length;
 
     const topPerformer = postedPosts
-      .filter(p => p.engagementRate !== null)
-      .sort((a, b) => (b.engagementRate || 0) - (a.engagementRate || 0))[0] || null;
+      .filter(p => getEngagementForFilter(p, platformFilter) > 0)
+      .sort((a, b) => getEngagementForFilter(b, platformFilter) - getEngagementForFilter(a, platformFilter))[0] || null;
 
     return {
       totalPosts: postedPosts.length,
@@ -383,8 +421,15 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         setGrowthData(data);
+        setGrowthError(null);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setGrowthData(null);
+        setGrowthError(data.details || data.error || 'Failed to fetch growth data');
       }
     } catch (err) {
+      setGrowthData(null);
+      setGrowthError(err instanceof Error ? err.message : 'Failed to fetch growth data');
       console.error('Failed to fetch growth data:', err);
     }
   };
@@ -400,7 +445,6 @@ export default function Dashboard() {
 
       const data = await response.json();
       setPosts(data.posts);
-      setStats(data.stats);
       setLastFetched(data.fetchedAt);
       setError(null);
 
@@ -445,12 +489,18 @@ export default function Dashboard() {
         const existing = acc.find(p => p.platform === 'TikTok');
         if (existing) {
           existing.posts += 1;
-          existing.views += post.views || 0; // TODO: use platform-specific views
+          existing.views += post.tiktokViews || 0;
+          existing.likes += post.tiktokLikes || 0;
+          existing.comments += post.tiktokComments || 0;
+          existing.shares += post.tiktokShares || 0;
         } else {
           acc.push({
             platform: 'TikTok',
             posts: 1,
-            views: post.views || 0,
+            views: post.tiktokViews || 0,
+            likes: post.tiktokLikes || 0,
+            comments: post.tiktokComments || 0,
+            shares: post.tiktokShares || 0,
             color: PLATFORM_COLORS['TikTok'],
           });
         }
@@ -460,19 +510,31 @@ export default function Dashboard() {
         const existing = acc.find(p => p.platform === 'Instagram');
         if (existing) {
           existing.posts += 1;
-          existing.views += post.views || 0; // TODO: use platform-specific views
+          existing.views += post.igViews || 0;
+          existing.likes += post.igLikes || 0;
+          existing.comments += post.igComments || 0;
+          existing.shares += post.igShares || 0;
         } else {
           acc.push({
             platform: 'Instagram',
             posts: 1,
-            views: post.views || 0,
+            views: post.igViews || 0,
+            likes: post.igLikes || 0,
+            comments: post.igComments || 0,
+            shares: post.igShares || 0,
             color: PLATFORM_COLORS['Instagram'],
           });
         }
       }
     }
     return acc;
-  }, [] as Array<{ platform: string; posts: number; views: number; color: string }>);
+  }, [] as Array<{ platform: string; posts: number; views: number; likes: number; comments: number; shares: number; color: string }>)
+  .map((entry) => ({
+    ...entry,
+    engagement: entry.views > 0
+      ? Math.round((((entry.likes + entry.comments + entry.shares) / entry.views) * 100) * 100) / 100
+      : 0,
+  }));
 
   const pillarData = filteredPosts.reduce((acc, post) => {
     const existing = acc.find(p => p.pillar === post.pillar);
@@ -502,16 +564,67 @@ export default function Dashboard() {
     return acc;
   }, [] as Array<{ status: string; count: number; color: string }>);
 
-  // Performance over time (last 30 days of posted content)
-  const performanceData = filteredPosts
-    .filter(p => p.status === 'Posted' && p.postDate)
-    .sort((a, b) => new Date(a.postDate!).getTime() - new Date(b.postDate!).getTime())
-    .slice(-10)
-    .map(p => ({
-      date: new Date(p.postDate!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      views: p.views || 0,
-      engagement: p.engagementRate || 0,
+  const performanceData = Array.from(
+    filteredPosts
+      .filter(p => p.status === 'Posted' && p.postDate)
+      .reduce((acc, post) => {
+        const key = post.postDate!;
+        const existing = acc.get(key) || {
+          rawDate: key,
+          date: new Date(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          tiktokViews: 0,
+          instagramViews: 0,
+          totalViews: 0,
+          totalEngagements: 0,
+          posts: 0,
+        };
+
+        const tiktokViews = platformFilter === 'instagram' ? 0 : post.tiktokViews || 0;
+        const instagramViews = platformFilter === 'tiktok' ? 0 : post.igViews || 0;
+        const views = getViewsForFilter(post, platformFilter);
+        const engagements =
+          getLikesForFilter(post, platformFilter) +
+          getCommentsForFilter(post, platformFilter) +
+          getSharesForFilter(post, platformFilter);
+
+        existing.tiktokViews += tiktokViews;
+        existing.instagramViews += instagramViews;
+        existing.totalViews += views;
+        existing.totalEngagements += engagements;
+        existing.posts += 1;
+        acc.set(key, existing);
+        return acc;
+      }, new Map<string, {
+        rawDate: string;
+        date: string;
+        tiktokViews: number;
+        instagramViews: number;
+        totalViews: number;
+        totalEngagements: number;
+        posts: number;
+      }>())
+      .values()
+  )
+    .sort((a, b) => new Date(a.rawDate).getTime() - new Date(b.rawDate).getTime())
+    .slice(-12)
+    .map((item) => ({
+      ...item,
+      engagement: item.totalViews > 0
+        ? Math.round(((item.totalEngagements / item.totalViews) * 100) * 100) / 100
+        : 0,
     }));
+
+  const leaderboardData = filteredPosts
+    .filter((p) => p.status === 'Posted' && getViewsForFilter(p, platformFilter) > 0)
+    .map((post) => ({
+      id: post.id,
+      title: post.title.length > 30 ? `${post.title.slice(0, 30)}...` : post.title,
+      views: getViewsForFilter(post, platformFilter),
+      engagement: getEngagementForFilter(post, platformFilter),
+    }))
+    .sort((a, b) => b.engagement - a.engagement)
+    .slice(0, 5)
+    .reverse();
 
   if (loading) {
     return (
@@ -647,6 +760,12 @@ export default function Dashboard() {
                       borderRadius: '8px',
                     }}
                     labelStyle={{ color: '#fff' }}
+                    formatter={(value: number, name: string) => {
+                      if (name === 'Views') return [formatNumber(value), name];
+                      if (name === 'Posts') return [value, name];
+                      if (name === 'Engagement') return [`${value.toFixed(2)}%`, name];
+                      return [value, name];
+                    }}
                   />
                   <Bar dataKey="views" name="Views" radius={[0, 4, 4, 0]}>
                     {platformData.map((entry, index) => (
@@ -655,6 +774,16 @@ export default function Dashboard() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+            <div className="mt-3 space-y-2">
+              {platformData.map((item) => (
+                <div key={item.platform} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400">{item.platform}</span>
+                  <span className="text-gray-500">
+                    {item.posts} posts, {item.engagement.toFixed(2)}% engagement
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -731,10 +860,10 @@ export default function Dashboard() {
         {/* Performance Trend */}
         {performanceData.length > 0 && (
           <div className="bg-[#141414] border border-[#262626] rounded-xl p-5 mb-8">
-            <h3 className="text-sm font-medium text-gray-400 mb-4">Performance Trend</h3>
+            <h3 className="text-sm font-medium text-gray-400 mb-4">Performance by Post Date</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={performanceData}>
+                <ComposedChart data={performanceData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
                   <XAxis dataKey="date" tick={{ fill: '#666', fontSize: 12 }} />
                   <YAxis yAxisId="views" tick={{ fill: '#666', fontSize: 12 }} />
@@ -742,6 +871,7 @@ export default function Dashboard() {
                     yAxisId="engagement"
                     orientation="right"
                     tick={{ fill: '#666', fontSize: 12 }}
+                    tickFormatter={(value: number) => `${value}%`}
                   />
                   <Tooltip
                     contentStyle={{
@@ -749,15 +879,32 @@ export default function Dashboard() {
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
+                    formatter={(value: number, name: string) => {
+                      if (name === 'Engagement') return [`${value.toFixed(2)}%`, name];
+                      if (name === 'Posts') return [value, name];
+                      return [formatNumber(value), name];
+                    }}
                   />
-                  <Line
-                    yAxisId="views"
-                    type="monotone"
-                    dataKey="views"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    dot={{ fill: '#3b82f6' }}
-                  />
+                  {platformFilter !== 'instagram' && (
+                    <Bar
+                      yAxisId="views"
+                      dataKey="tiktokViews"
+                      stackId="views"
+                      fill="#00f2ea"
+                      radius={[4, 4, 0, 0]}
+                      name="TikTok Views"
+                    />
+                  )}
+                  {platformFilter !== 'tiktok' && (
+                    <Bar
+                      yAxisId="views"
+                      dataKey="instagramViews"
+                      stackId="views"
+                      fill="#e4405f"
+                      radius={[4, 4, 0, 0]}
+                      name="Instagram Views"
+                    />
+                  )}
                   <Line
                     yAxisId="engagement"
                     type="monotone"
@@ -765,20 +912,77 @@ export default function Dashboard() {
                     stroke="#22c55e"
                     strokeWidth={2}
                     dot={{ fill: '#22c55e' }}
+                    name="Engagement"
                   />
-                </LineChart>
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="flex items-center gap-6 mt-2 text-xs text-gray-500">
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-0.5 bg-blue-500 rounded" />
-                Views
-              </span>
+              {platformFilter !== 'instagram' && (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-2 bg-[#00f2ea] rounded-sm" />
+                  TikTok Views
+                </span>
+              )}
+              {platformFilter !== 'tiktok' && (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-2 bg-[#e4405f] rounded-sm" />
+                  Instagram Views
+                </span>
+              )}
               <span className="flex items-center gap-2">
                 <span className="w-3 h-0.5 bg-green-500 rounded" />
                 Engagement %
               </span>
             </div>
+          </div>
+        )}
+
+        {leaderboardData.length > 0 && (
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-5 mb-8">
+            <h3 className="text-sm font-medium text-gray-400 mb-4">Engagement Leaderboard</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={leaderboardData} layout="vertical" margin={{ left: 12, right: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: '#666', fontSize: 12 }}
+                    tickFormatter={(value: number) => `${value}%`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="title"
+                    tick={{ fill: '#999', fontSize: 12 }}
+                    width={140}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1a1a1a',
+                      border: '1px solid #262626',
+                      borderRadius: '8px',
+                    }}
+                    formatter={(value: number, name: string, item: any) => {
+                      if (name === 'Engagement') return [`${value.toFixed(2)}%`, name];
+                      if (name === 'Views') return [formatNumber(item?.payload?.views || 0), name];
+                      return [value, name];
+                    }}
+                  />
+                  <Bar dataKey="engagement" name="Engagement" radius={[0, 4, 4, 0]} fill="#22c55e" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {growthError && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-5 mb-8">
+            <p className="text-sm font-medium text-amber-300 mb-1">Follower Growth Unavailable</p>
+            <p className="text-sm text-amber-100/80">
+              The dashboard can read post-level metrics from your main Notion content database, but the separate growth database is not shared with the
+              `Adapty Content Dashboard` integration yet.
+            </p>
           </div>
         )}
 
@@ -949,7 +1153,12 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {filteredPosts.map(post => (
-                  <PostRow key={post.id} post={post} onVideoClick={handleVideoClick} />
+                  <PostRow
+                    key={post.id}
+                    post={post}
+                    onVideoClick={handleVideoClick}
+                    platformFilter={platformFilter}
+                  />
                 ))}
               </tbody>
             </table>
@@ -975,9 +1184,9 @@ export default function Dashboard() {
             <div className="flex items-center gap-4 text-sm text-gray-400">
               <span>{filteredStats.topPerformer.platform}</span>
               <span>|</span>
-              <span>{formatNumber(filteredStats.topPerformer.views || 0)} views</span>
+              <span>{formatNumber(getViewsForFilter(filteredStats.topPerformer, platformFilter))} views</span>
               <span>|</span>
-              <span>{filteredStats.topPerformer.engagementRate?.toFixed(2)}% engagement</span>
+              <span>{getEngagementForFilter(filteredStats.topPerformer, platformFilter).toFixed(2)}% engagement</span>
             </div>
           </div>
         )}

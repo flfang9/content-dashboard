@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchPostedForSync, updatePostMetrics, updateEngagementRate, createGrowthSnapshot, hasSnapshotForToday, getExistingInstagramShortcodes, createInstagramPost } from '@/lib/notion';
+import { fetchPostedForSync, updatePostMetrics, updateEngagementRate, upsertGrowthSnapshot, getExistingInstagramShortcodes, createInstagramPost } from '@/lib/notion';
 import { scrapeMetrics, scrapeTikTokProfile, getInstagramAccountStats, fetchAllInstagramMedia, clearInstagramCache } from '@/lib/scrapers';
 
 export const dynamic = 'force-dynamic';
@@ -140,58 +140,47 @@ async function runSync() {
     // ─── Growth Snapshot Tracking ─────────────────────────────────────────────
     let growthResult = null;
 
-    // Only create one snapshot per day
-    const alreadySnapped = await hasSnapshotForToday();
-    if (!alreadySnapped) {
-      try {
-        // Fetch account-level stats
-        const tiktokUsername = process.env.TIKTOK_USERNAME;
-        const tiktokProfile = tiktokUsername ? await scrapeTikTokProfile(tiktokUsername) : null;
-        const igAccount = await getInstagramAccountStats();
+    try {
+      // Fetch account-level stats
+      const tiktokUsername = process.env.TIKTOK_USERNAME;
+      const tiktokProfile = tiktokUsername ? await scrapeTikTokProfile(tiktokUsername) : null;
+      const igAccount = await getInstagramAccountStats();
 
-        // Sum up all post metrics for totals
-        const postedPosts = posts.filter(p => p.status === 'Posted');
-        const tiktokViews = postedPosts.reduce((sum, p) => {
-          // Get TikTok-specific views if available (stored in notion)
-          return sum + (p.views || 0);
-        }, 0);
-        const tiktokLikes = postedPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
+      // Sum up current post metrics using platform-specific values
+      const postedPosts = posts.filter(p => p.status === 'Posted');
+      const tiktokViews = postedPosts.reduce((sum, p) => sum + (p.tiktokViews || 0), 0);
+      const tiktokLikes = postedPosts.reduce((sum, p) => sum + (p.tiktokLikes || 0), 0);
+      const igViews = postedPosts.reduce((sum, p) => sum + (p.igViews || 0), 0);
+      const igLikes = postedPosts.reduce((sum, p) => sum + (p.igLikes || 0), 0);
 
-        // For IG, we'd need platform-specific metrics - for now use combined
-        const igViews = 0; // Would need to track separately
-        const igLikes = 0;
+      const today = new Date().toISOString().split('T')[0];
+      const action = await upsertGrowthSnapshot({
+        date: today,
+        tiktokFollowers: tiktokProfile?.followers || 0,
+        tiktokTotalLikes: tiktokProfile?.likes || 0,
+        tiktokVideos: tiktokProfile?.videos || 0,
+        instagramFollowers: igAccount?.followers || 0,
+        instagramPosts: igAccount?.postsCount || 0,
+        tiktokViews,
+        tiktokLikes,
+        instagramViews: igViews,
+        instagramLikes: igLikes,
+      });
 
-        const today = new Date().toISOString().split('T')[0];
+      growthResult = {
+        success: true,
+        action,
+        tiktokFollowers: tiktokProfile?.followers,
+        instagramFollowers: igAccount?.followers,
+      };
 
-        await createGrowthSnapshot({
-          date: today,
-          tiktokFollowers: tiktokProfile?.followers || 0,
-          tiktokTotalLikes: tiktokProfile?.likes || 0,
-          tiktokVideos: tiktokProfile?.videos || 0,
-          instagramFollowers: igAccount?.followers || 0,
-          instagramPosts: igAccount?.postsCount || 0,
-          tiktokViews,
-          tiktokLikes,
-          instagramViews: igViews,
-          instagramLikes: igLikes,
-        });
-
-        growthResult = {
-          success: true,
-          tiktokFollowers: tiktokProfile?.followers,
-          instagramFollowers: igAccount?.followers,
-        };
-
-        console.log('Growth snapshot created:', growthResult);
-      } catch (error) {
-        console.error('Growth snapshot error:', error);
-        growthResult = {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
-    } else {
-      growthResult = { skipped: true, reason: 'Snapshot already exists for today' };
+      console.log(`Growth snapshot ${action}:`, growthResult);
+    } catch (error) {
+      console.error('Growth snapshot error:', error);
+      growthResult = {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
 
     return NextResponse.json({

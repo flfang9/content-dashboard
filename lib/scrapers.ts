@@ -8,6 +8,20 @@ interface ScrapedMetrics {
   saves?: number;
 }
 
+function mapTikTokStatsToMetrics(stats: any): ScrapedMetrics | null {
+  if (!stats || typeof stats !== 'object') {
+    return null;
+  }
+
+  return {
+    views: Number(stats.playCount ?? stats.viewCount ?? 0),
+    likes: Number(stats.diggCount ?? stats.likeCount ?? 0),
+    comments: Number(stats.commentCount ?? 0),
+    shares: Number(stats.shareCount ?? 0),
+    saves: Number(stats.collectCount ?? stats.saveCount ?? 0),
+  };
+}
+
 // Account-level stats for growth tracking
 export interface TikTokProfileStats {
   followers: number;
@@ -45,26 +59,7 @@ function extractInstagramPostId(url: string): string | null {
 // Scrape TikTok metrics using oEmbed API (public, no auth needed)
 export async function scrapeTikTok(url: string): Promise<ScrapedMetrics | null> {
   try {
-    // TikTok oEmbed endpoint
-    const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
-    const response = await fetch(oembedUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ContentDashboard/1.0)',
-      },
-    });
-
-    if (!response.ok) {
-      console.error(`TikTok oEmbed failed: ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-
-    // oEmbed doesn't give us metrics directly, but we can try page scraping
-    // For now, return null and fall back to manual entry or TikTok API
-    // The oEmbed is mainly useful for thumbnails and embeds
-
-    // Alternative: Scrape the actual page for metrics
+    // TikTok oEmbed is not reliable for photo posts and is not needed for metrics.
     return await scrapeTikTokPage(url);
   } catch (error) {
     console.error('TikTok scraping error:', error);
@@ -75,6 +70,11 @@ export async function scrapeTikTok(url: string): Promise<ScrapedMetrics | null> 
 // Scrape TikTok page directly (supports both video and photo posts)
 async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
   try {
+    if (url.includes('/photo/')) {
+      console.log('TikTok: Photo post detected, using browser scrape...');
+      return await scrapeTikTokWithBrowser(url);
+    }
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -114,13 +114,7 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
       return null;
     }
 
-    return {
-      views: itemData.stats.playCount || itemData.stats.viewCount || 0,
-      likes: itemData.stats.diggCount || itemData.stats.likeCount || 0,
-      comments: itemData.stats.commentCount || 0,
-      shares: itemData.stats.shareCount || 0,
-      saves: itemData.stats.collectCount || itemData.stats.saveCount || 0,
-    };
+    return mapTikTokStatsToMetrics(itemData.stats);
   } catch (error) {
     console.error('TikTok page scraping error:', error);
     return null;
@@ -161,9 +155,33 @@ async function scrapeTikTokWithBrowser(url: string): Promise<ScrapedMetrics | nu
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+    const itemDetailResponsePromise = page
+      .waitForResponse(
+        (response) =>
+          response.status() === 200 &&
+          response.url().includes('/api/item/detail/'),
+        { timeout: 30000 }
+      )
+      .catch(() => null);
+
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Wait for stats to load
+    const itemDetailResponse = await itemDetailResponsePromise;
+    if (itemDetailResponse) {
+      try {
+        const data = await itemDetailResponse.json();
+        const apiMetrics = mapTikTokStatsToMetrics(data?.itemInfo?.itemStruct?.stats);
+        if (apiMetrics && Object.values(apiMetrics).some((value) => value && value > 0)) {
+          await browser.close();
+          console.log('TikTok browser API scrape result:', apiMetrics);
+          return apiMetrics;
+        }
+      } catch (error) {
+        console.error('TikTok browser API parsing error:', error);
+      }
+    }
+
+    // Wait for visible stats as a fallback when the API response is unavailable.
     await page.waitForSelector('[data-e2e="like-count"], [data-e2e="browse-like-count"]', { timeout: 10000 }).catch(() => {});
 
     // Extract metrics from the page
