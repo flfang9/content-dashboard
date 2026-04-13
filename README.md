@@ -123,9 +123,15 @@ crontab -e
 - Example URL: `https://www.tiktok.com/@yourusername/video/1234567890`
 
 ### Instagram (Optional setup)
+
+**For Vercel deployment (recommended):**
 - Requires Instagram Business/Creator account connected to a Facebook Page
-- Uses official Instagram Graph API
-- Add `IG_USER_ID` and `IG_ACCESS_TOKEN` to your `.env`
+- Uses Facebook Graph API for Instagram
+- Add `META_ACCESS_TOKEN` and `IG_USER_ID` to your Vercel environment variables
+
+**For local sync script (`sync/sync.js`):**
+- Uses Instagram Basic Display API
+- Add `IG_ACCESS_TOKEN` and `IG_USER_ID` to `sync/.env`
 
 ## Project Structure
 
