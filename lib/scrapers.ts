@@ -72,7 +72,7 @@ export async function scrapeTikTok(url: string): Promise<ScrapedMetrics | null> 
   }
 }
 
-// Scrape TikTok page directly (less reliable, may need updates)
+// Scrape TikTok page directly (supports both video and photo posts)
 async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
   try {
     const response = await fetch(url, {
@@ -91,16 +91,25 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
     if (!scriptMatch) return null;
 
     const jsonData = JSON.parse(scriptMatch[1]);
-    const videoData = jsonData?.['__DEFAULT_SCOPE__']?.['webapp.video-detail']?.['itemInfo']?.['itemStruct'];
+    const defaultScope = jsonData?.['__DEFAULT_SCOPE__'];
 
-    if (!videoData?.stats) return null;
+    // Try video-detail first, then photo-detail for carousel/slideshow posts
+    const itemData =
+      defaultScope?.['webapp.video-detail']?.['itemInfo']?.['itemStruct'] ||
+      defaultScope?.['webapp.photo-detail']?.['itemInfo']?.['itemStruct'] ||
+      defaultScope?.['webapp.slideshow-detail']?.['itemInfo']?.['itemStruct'];
+
+    if (!itemData?.stats) {
+      console.log('TikTok: No stats found in page data');
+      return null;
+    }
 
     return {
-      views: videoData.stats.playCount,
-      likes: videoData.stats.diggCount,
-      comments: videoData.stats.commentCount,
-      shares: videoData.stats.shareCount,
-      saves: videoData.stats.collectCount,
+      views: itemData.stats.playCount || itemData.stats.viewCount || 0,
+      likes: itemData.stats.diggCount || itemData.stats.likeCount || 0,
+      comments: itemData.stats.commentCount || 0,
+      shares: itemData.stats.shareCount || 0,
+      saves: itemData.stats.collectCount || itemData.stats.saveCount || 0,
     };
   } catch (error) {
     console.error('TikTok page scraping error:', error);
@@ -213,12 +222,14 @@ export async function fetchAllInstagramMedia(): Promise<InstagramMediaItem[]> {
 async function fetchInstagramInsights(mediaId: string, mediaType: string, accessToken: string): Promise<ScrapedMetrics | null> {
   try {
     // Different metrics for different media types
-    // Reels: reach, saved, shares, total_interactions
-    // Images/Carousels: impressions, reach, saved
-    const isReel = mediaType === 'VIDEO' || mediaType === 'REELS';
-    const metrics = isReel
-      ? 'reach,saved,shares,total_interactions'
-      : 'impressions,reach,saved';
+    // As of v22.0+: plays/impressions are deprecated
+    // Use reach for views (unique accounts that saw the content)
+    // Reels/Videos: reach, saved, shares
+    // Images/Carousels: reach, saved
+    const isVideo = mediaType === 'VIDEO' || mediaType === 'REELS';
+    const metrics = isVideo
+      ? 'reach,saved,shares'
+      : 'reach,saved';
 
     const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`;
     const response = await fetch(url);
@@ -234,12 +245,12 @@ async function fetchInstagramInsights(mediaId: string, mediaType: string, access
     const insights = data.data || [];
 
     const reach = insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
-    const impressions = insights.find((i: any) => i.name === 'impressions')?.values?.[0]?.value;
     const saved = insights.find((i: any) => i.name === 'saved')?.values?.[0]?.value;
     const shares = insights.find((i: any) => i.name === 'shares')?.values?.[0]?.value;
 
     return {
-      views: impressions || reach, // Use impressions if available, otherwise reach
+      // Use reach as views (unique accounts that saw the content)
+      views: reach || 0,
       saves: saved,
       shares: shares,
     };
