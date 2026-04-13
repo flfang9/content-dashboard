@@ -323,11 +323,37 @@ export default function Dashboard() {
   const filteredStats = (() => {
     const postedPosts = filteredPosts.filter(p => p.status === 'Posted');
 
-    const totalViews = postedPosts.reduce((sum, p) => sum + (p.views || 0), 0);
-    const totalLikes = postedPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
-    const totalComments = postedPosts.reduce((sum, p) => sum + (p.comments || 0), 0);
-    const totalShares = postedPosts.reduce((sum, p) => sum + (p.shares || 0), 0);
-    const totalSaves = postedPosts.reduce((sum, p) => sum + (p.saves || 0), 0);
+    // Use platform-specific metrics when filtering by platform
+    const getViews = (p: ContentPost) => {
+      if (platformFilter === 'tiktok') return p.tiktokViews || 0;
+      if (platformFilter === 'instagram') return p.igViews || 0;
+      return p.views || 0;
+    };
+    const getLikes = (p: ContentPost) => {
+      if (platformFilter === 'tiktok') return p.tiktokLikes || 0;
+      if (platformFilter === 'instagram') return p.igLikes || 0;
+      return p.likes || 0;
+    };
+    const getComments = (p: ContentPost) => {
+      if (platformFilter === 'tiktok') return p.tiktokComments || 0;
+      if (platformFilter === 'instagram') return p.igComments || 0;
+      return p.comments || 0;
+    };
+    const getShares = (p: ContentPost) => {
+      if (platformFilter === 'tiktok') return p.tiktokShares || 0;
+      if (platformFilter === 'instagram') return p.igShares || 0;
+      return p.shares || 0;
+    };
+    const getSaves = (p: ContentPost) => {
+      if (platformFilter === 'instagram') return p.igSaves || 0;
+      return p.saves || 0;
+    };
+
+    const totalViews = postedPosts.reduce((sum, p) => sum + getViews(p), 0);
+    const totalLikes = postedPosts.reduce((sum, p) => sum + getLikes(p), 0);
+    const totalComments = postedPosts.reduce((sum, p) => sum + getComments(p), 0);
+    const totalShares = postedPosts.reduce((sum, p) => sum + getShares(p), 0);
+    const totalSaves = postedPosts.reduce((sum, p) => sum + getSaves(p), 0);
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);

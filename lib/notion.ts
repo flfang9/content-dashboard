@@ -103,6 +103,17 @@ function pageToPost(page: any): ContentPost {
     saves,
     engagementRate: getPropertyValue(props['Total Engagement']),
 
+    // Platform-specific metrics (for filtering)
+    tiktokViews,
+    tiktokLikes,
+    tiktokComments,
+    tiktokShares,
+    igViews,
+    igLikes,
+    igComments,
+    igShares,
+    igSaves,
+
     // Metadata
     createdAt: page.created_time,
     lastSynced: getPropertyValue(props['Last Synced']),

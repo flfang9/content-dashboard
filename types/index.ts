@@ -34,6 +34,17 @@ export interface ContentPost {
   saves: number | null;
   engagementRate: number | null;
 
+  // Platform-specific metrics (for filtering)
+  tiktokViews?: number;
+  tiktokLikes?: number;
+  tiktokComments?: number;
+  tiktokShares?: number;
+  igViews?: number;
+  igLikes?: number;
+  igComments?: number;
+  igShares?: number;
+  igSaves?: number;
+
   // Metadata
   createdAt: string;
   lastSynced: string | null;

@@ -302,6 +302,7 @@ export async function scrapeInstagram(url: string): Promise<ScrapedMetrics | nul
       metrics.shares = insights.shares;
     }
 
+    console.log(`Instagram metrics for ${shortcode}:`, metrics);
     return metrics;
   } catch (error) {
     console.error('Instagram scraping error:', error);
