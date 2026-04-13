@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchPostedForSync, updatePostMetrics, createGrowthSnapshot, hasSnapshotForToday, getExistingInstagramShortcodes, createInstagramPost } from '@/lib/notion';
+import { fetchPostedForSync, updatePostMetrics, updateEngagementRate, createGrowthSnapshot, hasSnapshotForToday, getExistingInstagramShortcodes, createInstagramPost } from '@/lib/notion';
 import { scrapeMetrics, scrapeTikTokProfile, getInstagramAccountStats, fetchAllInstagramMedia, clearInstagramCache } from '@/lib/scrapers';
 
 export const dynamic = 'force-dynamic';
@@ -103,6 +103,11 @@ async function runSync() {
         }
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Update engagement rate after syncing metrics
+      if (syncedPlatforms.length > 0) {
+        await updateEngagementRate(post.id);
       }
 
       // Record result

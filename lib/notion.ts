@@ -101,7 +101,8 @@ function pageToPost(page: any): ContentPost {
     comments,
     shares,
     saves,
-    engagementRate: getPropertyValue(props['Total Engagement']),
+    // Use Calculated Engagement (number) if available, fall back to formula
+    engagementRate: getPropertyValue(props['Calculated Engagement']) ?? getPropertyValue(props['Total Engagement']),
 
     // Platform-specific metrics (for filtering)
     tiktokViews,
@@ -215,9 +216,8 @@ export async function updatePostMetrics(
   if (metrics.shares !== undefined) {
     properties[`${prefix} Shares`] = { number: toNum(metrics.shares) };
   }
-  if (metrics.saves !== undefined && platform === 'Instagram') {
-    // Only Instagram has saves tracked separately
-    properties['IG Saves'] = { number: toNum(metrics.saves) };
+  if (metrics.saves !== undefined) {
+    properties[`${prefix === 'TikTok' ? 'TikTok' : 'IG'} Saves`] = { number: toNum(metrics.saves) };
   }
 
   console.log(`Updating ${platform} metrics for page ${pageId}:`, properties);
@@ -226,6 +226,46 @@ export async function updatePostMetrics(
     page_id: pageId,
     properties,
   });
+}
+
+// Calculate and update engagement rate for a post
+export async function updateEngagementRate(pageId: string): Promise<void> {
+  try {
+    // First, fetch current metrics from the page
+    const page = await notion.pages.retrieve({ page_id: pageId }) as any;
+    const props = page.properties;
+
+    const tiktokViews = props['TikTok Views']?.number || 0;
+    const igViews = props['IG Views']?.number || 0;
+    const tiktokLikes = props['TikTok Likes']?.number || 0;
+    const igLikes = props['IG Likes']?.number || 0;
+    const tiktokComments = props['TikTok Comments']?.number || 0;
+    const igComments = props['IG Comments']?.number || 0;
+    const tiktokShares = props['TikTok Shares']?.number || 0;
+    const igShares = props['IG Shares']?.number || 0;
+
+    const totalViews = tiktokViews + igViews;
+    const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares;
+
+    // Calculate engagement rate as percentage
+    const engagementRate = totalViews > 0 ? (totalEngagements / totalViews) * 100 : 0;
+
+    // Round to 2 decimal places
+    const roundedRate = Math.round(engagementRate * 100) / 100;
+
+    console.log(`Updating engagement rate for ${pageId}: ${roundedRate}% (${totalEngagements} engagements / ${totalViews} views)`);
+
+    // Update the Calculated Engagement field (create if using number field)
+    await notion.pages.update({
+      page_id: pageId,
+      properties: {
+        'Calculated Engagement': { number: roundedRate },
+      },
+    });
+  } catch (error) {
+    console.error('Error updating engagement rate:', error);
+    // Don't throw - engagement calculation is not critical
+  }
 }
 
 // Calculate dashboard stats

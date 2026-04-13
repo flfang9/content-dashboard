@@ -88,7 +88,14 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
 
     // TikTok embeds JSON data in script tags
     const scriptMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/);
-    if (!scriptMatch) return null;
+    if (!scriptMatch) {
+      // Photo posts might need browser rendering - try Puppeteer
+      if (url.includes('/photo/')) {
+        console.log('TikTok: Photo post detected, trying browser scrape...');
+        return await scrapeTikTokWithBrowser(url);
+      }
+      return null;
+    }
 
     const jsonData = JSON.parse(scriptMatch[1]);
     const defaultScope = jsonData?.['__DEFAULT_SCOPE__'];
@@ -100,7 +107,10 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
       defaultScope?.['webapp.slideshow-detail']?.['itemInfo']?.['itemStruct'];
 
     if (!itemData?.stats) {
-      console.log('TikTok: No stats found in page data');
+      console.log('TikTok: No stats found in page data, trying browser...');
+      if (url.includes('/photo/')) {
+        return await scrapeTikTokWithBrowser(url);
+      }
       return null;
     }
 
@@ -113,6 +123,82 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
     };
   } catch (error) {
     console.error('TikTok page scraping error:', error);
+    return null;
+  }
+}
+
+// Scrape TikTok photo posts using headless browser
+async function scrapeTikTokWithBrowser(url: string): Promise<ScrapedMetrics | null> {
+  let browser = null;
+  try {
+    // Dynamic import for serverless compatibility
+    const puppeteer = await import('puppeteer-core');
+
+    let executablePath: string;
+    let args: string[] = [];
+
+    // Check if running in Vercel/serverless
+    if (process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.VERCEL) {
+      const chromium = await import('@sparticuz/chromium');
+      executablePath = await chromium.default.executablePath();
+      args = chromium.default.args;
+    } else {
+      // Local development - use system Chrome
+      executablePath = process.platform === 'darwin'
+        ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        : process.platform === 'win32'
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : '/usr/bin/google-chrome';
+      args = ['--no-sandbox', '--disable-setuid-sandbox'];
+    }
+
+    browser = await puppeteer.default.launch({
+      executablePath,
+      args,
+      headless: true,
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // Wait for stats to load
+    await page.waitForSelector('[data-e2e="like-count"], [data-e2e="browse-like-count"]', { timeout: 10000 }).catch(() => {});
+
+    // Extract metrics from the page
+    const metrics = await page.evaluate(() => {
+      const parseCount = (text: string | null): number => {
+        if (!text) return 0;
+        text = text.trim().toUpperCase();
+        if (text.includes('K')) return parseFloat(text) * 1000;
+        if (text.includes('M')) return parseFloat(text) * 1000000;
+        return parseInt(text.replace(/,/g, '')) || 0;
+      };
+
+      // Try different selectors for photo posts
+      const likeEl = document.querySelector('[data-e2e="like-count"], [data-e2e="browse-like-count"]');
+      const commentEl = document.querySelector('[data-e2e="comment-count"], [data-e2e="browse-comment-count"]');
+      const shareEl = document.querySelector('[data-e2e="share-count"]');
+      const saveEl = document.querySelector('[data-e2e="undefined-count"], [data-e2e="collect-count"]');
+      const viewEl = document.querySelector('[data-e2e="video-views"], [data-e2e="browse-video-views"]');
+
+      return {
+        likes: parseCount(likeEl?.textContent || null),
+        comments: parseCount(commentEl?.textContent || null),
+        shares: parseCount(shareEl?.textContent || null),
+        saves: parseCount(saveEl?.textContent || null),
+        views: parseCount(viewEl?.textContent || null),
+      };
+    });
+
+    await browser.close();
+
+    console.log('TikTok browser scrape result:', metrics);
+    return metrics;
+  } catch (error) {
+    console.error('TikTok browser scraping error:', error);
+    if (browser) await browser.close();
     return null;
   }
 }
