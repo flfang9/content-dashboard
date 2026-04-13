@@ -15,7 +15,7 @@ A self-hosted dashboard that syncs your TikTok and Instagram metrics to Notion a
 
 ### 1. Duplicate the Notion Template
 
-**[Click here to duplicate the Content Calendar template](https://distinct-oboe-31d.notion.site/ed952a8b99df837d946401de2a05ca5a?v=18a52a8b99df82ecb07188c6455b804c)**
+**[Click here to duplicate the Content Calendar template](https://distinct-oboe-31d.notion.site/56652a8b99df82fe9c97014d45d406ab?v=96e52a8b99df83c982f608f8c11c6fc7)**
 
 Click "Duplicate" in the top right to add it to your workspace.
 
