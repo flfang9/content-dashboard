@@ -19,10 +19,18 @@ import {
 } from 'recharts';
 import { ContentPost, GrowthData } from '@/types';
 
-// Extract video ID from TikTok URL
-function getTikTokVideoId(url: string): string | null {
-  const match = url.match(/video\/(\d+)/);
-  return match ? match[1] : null;
+function getTikTokPostMeta(url: string): { id: string | null; type: 'video' | 'photo' | null } {
+  const videoMatch = url.match(/video\/(\d+)/);
+  if (videoMatch) {
+    return { id: videoMatch[1], type: 'video' };
+  }
+
+  const photoMatch = url.match(/photo\/(\d+)/);
+  if (photoMatch) {
+    return { id: photoMatch[1], type: 'photo' };
+  }
+
+  return { id: null, type: null };
 }
 
 // Video Modal Component
@@ -39,7 +47,9 @@ function VideoModal({
   );
 
   const activeUrl = activePlatform === 'TikTok' ? post.tiktokUrl : post.igUrl;
-  const videoId = activeUrl ? getTikTokVideoId(activeUrl) : null;
+  const tiktokPostMeta = activeUrl && activePlatform === 'TikTok'
+    ? getTikTokPostMeta(activeUrl)
+    : { id: null, type: null as 'video' | 'photo' | null };
 
   // Close on escape key
   useEffect(() => {
@@ -108,14 +118,46 @@ function VideoModal({
 
         {/* Video Embed */}
         <div className="aspect-[9/16] bg-black">
-          {activePlatform === 'TikTok' && videoId ? (
+          {activePlatform === 'TikTok' && tiktokPostMeta.type === 'video' && tiktokPostMeta.id ? (
             <iframe
-              key={`tiktok-${videoId}`}
-              src={`https://www.tiktok.com/embed/v2/${videoId}`}
+              key={`tiktok-${tiktokPostMeta.id}`}
+              src={`https://www.tiktok.com/embed/v2/${tiktokPostMeta.id}`}
               className="w-full h-full"
               allowFullScreen
               allow="encrypted-media"
             />
+          ) : activePlatform === 'TikTok' && tiktokPostMeta.type === 'photo' ? (
+            <div className="w-full h-full flex items-center justify-center p-6 bg-gradient-to-br from-[#101010] via-[#151515] to-[#0a0a0a]">
+              <div className="w-full max-w-sm rounded-2xl border border-[#262626] bg-[#141414] p-6 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#00f2ea]/15">
+                  <svg className="h-7 w-7 text-[#00f2ea]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="mb-2 text-lg font-semibold text-white">TikTok Carousel Post</p>
+                <p className="mb-5 text-sm leading-6 text-gray-400">
+                  This TikTok post is a photo carousel, not a reel. The dashboard is synced to its live metrics, but TikTok does not provide a clean embedded carousel player here.
+                </p>
+                <div className="grid grid-cols-2 gap-3 text-left">
+                  <div className="rounded-xl border border-[#262626] bg-black/30 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-500">Views</p>
+                    <p className="mt-1 text-base font-semibold text-white">{formatNumber(post.tiktokViews || 0)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#262626] bg-black/30 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-500">Likes</p>
+                    <p className="mt-1 text-base font-semibold text-white">{formatNumber(post.tiktokLikes || 0)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#262626] bg-black/30 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-500">Comments</p>
+                    <p className="mt-1 text-base font-semibold text-white">{formatNumber(post.tiktokComments || 0)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#262626] bg-black/30 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-500">Shares</p>
+                    <p className="mt-1 text-base font-semibold text-white">{formatNumber(post.tiktokShares || 0)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : activePlatform === 'Instagram' && activeUrl ? (
             <iframe
               key={`ig-${activeUrl}`}
@@ -278,6 +320,8 @@ function PostRow({
 }) {
   const hasVideo = post.status === 'Posted' && post.postUrl;
   const hasBothPlatforms = post.tiktokUrl && post.igUrl;
+  const primaryTikTokMeta = post.tiktokUrl ? getTikTokPostMeta(post.tiktokUrl) : { id: null, type: null as 'video' | 'photo' | null };
+  const triggerTitle = primaryTikTokMeta.type === 'photo' ? 'Open carousel post' : 'Watch post';
   const views = getViewsForFilter(post, platformFilter);
   const likes = getLikesForFilter(post, platformFilter);
   const engagement = getEngagementForFilter(post, platformFilter);
@@ -291,11 +335,17 @@ function PostRow({
             <button
               onClick={() => onVideoClick(post)}
               className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00f2ea] to-[#ff0050] flex items-center justify-center hover:scale-110 transition-transform group"
-              title="Watch video"
+              title={triggerTitle}
             >
-              <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
+              {primaryTikTokMeta.type === 'photo' ? (
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
             </button>
           ) : (
             <span
@@ -626,6 +676,59 @@ export default function Dashboard() {
     .slice(0, 5)
     .reverse();
 
+  const insightData = (() => {
+    const postedPosts = filteredPosts.filter((p) => p.status === 'Posted');
+    const avgViewsPerPost = postedPosts.length > 0
+      ? Math.round(postedPosts.reduce((sum, post) => sum + getViewsForFilter(post, platformFilter), 0) / postedPosts.length)
+      : 0;
+
+    const pillarMap = new Map<string, { pillar: string; posts: number; views: number; engagementTotal: number }>();
+    const dayMap = new Map<string, { day: string; posts: number; views: number }>();
+
+    for (const post of postedPosts) {
+      const views = getViewsForFilter(post, platformFilter);
+      const engagement = getEngagementForFilter(post, platformFilter);
+      const pillarEntry = pillarMap.get(post.pillar) || {
+        pillar: post.pillar,
+        posts: 0,
+        views: 0,
+        engagementTotal: 0,
+      };
+      pillarEntry.posts += 1;
+      pillarEntry.views += views;
+      pillarEntry.engagementTotal += engagement;
+      pillarMap.set(post.pillar, pillarEntry);
+
+      if (post.postDate) {
+        const day = new Date(post.postDate).toLocaleDateString('en-US', { weekday: 'short' });
+        const dayEntry = dayMap.get(day) || { day, posts: 0, views: 0 };
+        dayEntry.posts += 1;
+        dayEntry.views += views;
+        dayMap.set(day, dayEntry);
+      }
+    }
+
+    const bestPillar = Array.from(pillarMap.values())
+      .sort((a, b) => {
+        const aAvg = a.posts > 0 ? a.views / a.posts : 0;
+        const bAvg = b.posts > 0 ? b.views / b.posts : 0;
+        return bAvg - aAvg;
+      })[0] || null;
+
+    const bestDay = Array.from(dayMap.values())
+      .sort((a, b) => {
+        const aAvg = a.posts > 0 ? a.views / a.posts : 0;
+        const bAvg = b.posts > 0 ? b.views / b.posts : 0;
+        return bAvg - aAvg;
+      })[0] || null;
+
+    return {
+      avgViewsPerPost,
+      bestPillar,
+      bestDay,
+    };
+  })();
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -735,6 +838,38 @@ export default function Dashboard() {
             value={platformFilter === 'instagram' ? filteredStats.totalSaves : filteredStats.postsThisWeek}
             subtitle={platformFilter === 'instagram' ? undefined : 'posts'}
           />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-5">
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Avg Views / Post</p>
+            <p className="text-2xl font-semibold text-white">{formatNumber(insightData.avgViewsPerPost)}</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Based on posted {platformFilter === 'all' ? 'content' : platformFilter === 'tiktok' ? 'TikTok posts' : 'Instagram posts'}
+            </p>
+          </div>
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-5">
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Best Pillar</p>
+            <p className="text-2xl font-semibold text-white">
+              {insightData.bestPillar ? insightData.bestPillar.pillar : '-'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              {insightData.bestPillar
+                ? `${formatNumber(Math.round(insightData.bestPillar.views / insightData.bestPillar.posts))} avg views/post`
+                : 'Need more posted content'}
+            </p>
+          </div>
+          <div className="bg-[#141414] border border-[#262626] rounded-xl p-5">
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Best Posting Day</p>
+            <p className="text-2xl font-semibold text-white">
+              {insightData.bestDay ? insightData.bestDay.day : '-'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              {insightData.bestDay
+                ? `${formatNumber(Math.round(insightData.bestDay.views / insightData.bestDay.posts))} avg views/post`
+                : 'Need dated posted content'}
+            </p>
+          </div>
         </div>
 
         {/* Charts Row */}
