@@ -19,46 +19,64 @@ export async function GET(request: NextRequest) {
 
     const snapshots = await fetchGrowthHistory(days);
 
-    // Calculate week-over-week changes if we have enough data
-    let weekOverWeek = null;
-    if (snapshots.length >= 2) {
-      const latest = snapshots[snapshots.length - 1];
-
-      // Find snapshot from ~7 days ago
-      const weekAgoIndex = Math.max(0, snapshots.length - 8);
-      const weekAgo = snapshots[weekAgoIndex];
-
-      if (latest && weekAgo) {
-        const tiktokFollowerChange = latest.tiktokFollowers - weekAgo.tiktokFollowers;
-        const igFollowerChange = latest.instagramFollowers - weekAgo.instagramFollowers;
-
-        weekOverWeek = {
-          tiktokFollowers: {
-            current: latest.tiktokFollowers,
-            previous: weekAgo.tiktokFollowers,
-            change: tiktokFollowerChange,
-            changePercent: weekAgo.tiktokFollowers > 0
-              ? Math.round((tiktokFollowerChange / weekAgo.tiktokFollowers) * 10000) / 100
-              : 0,
-          },
-          instagramFollowers: {
-            current: latest.instagramFollowers,
-            previous: weekAgo.instagramFollowers,
-            change: igFollowerChange,
-            changePercent: weekAgo.instagramFollowers > 0
-              ? Math.round((igFollowerChange / weekAgo.instagramFollowers) * 10000) / 100
-              : 0,
-          },
-        };
-      }
-    }
-
     // Get latest snapshot for current stats
     const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+
+    const buildComparison = (dayOffset: number) => {
+      if (!latest || snapshots.length < 2) return null;
+
+      const latestDate = new Date(`${latest.date}T00:00:00Z`);
+      const targetDate = new Date(latestDate);
+      targetDate.setUTCDate(targetDate.getUTCDate() - dayOffset);
+
+      let comparisonSnapshot = snapshots[0];
+      for (const snapshot of snapshots) {
+        const snapshotDate = new Date(`${snapshot.date}T00:00:00Z`);
+        if (snapshotDate <= targetDate) {
+          comparisonSnapshot = snapshot;
+        } else {
+          break;
+        }
+      }
+
+      if (!comparisonSnapshot || comparisonSnapshot.date === latest.date) {
+        return null;
+      }
+
+      const tiktokFollowerChange = latest.tiktokFollowers - comparisonSnapshot.tiktokFollowers;
+      const igFollowerChange = latest.instagramFollowers - comparisonSnapshot.instagramFollowers;
+
+      return {
+        tiktokFollowers: {
+          current: latest.tiktokFollowers,
+          previous: comparisonSnapshot.tiktokFollowers,
+          change: tiktokFollowerChange,
+          changePercent: comparisonSnapshot.tiktokFollowers > 0
+            ? Math.round((tiktokFollowerChange / comparisonSnapshot.tiktokFollowers) * 10000) / 100
+            : 0,
+        },
+        instagramFollowers: {
+          current: latest.instagramFollowers,
+          previous: comparisonSnapshot.instagramFollowers,
+          change: igFollowerChange,
+          changePercent: comparisonSnapshot.instagramFollowers > 0
+            ? Math.round((igFollowerChange / comparisonSnapshot.instagramFollowers) * 10000) / 100
+            : 0,
+        },
+      };
+    };
+
+    const comparisons = {
+      days7: buildComparison(7),
+      days30: buildComparison(30),
+    };
+
+    const weekOverWeek = comparisons.days7;
 
     return NextResponse.json({
       snapshots,
       latest,
+      comparisons,
       weekOverWeek,
       fetchedAt: new Date().toISOString(),
     });

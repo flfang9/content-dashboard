@@ -81,6 +81,36 @@ export interface GrowthSnapshot {
 export interface GrowthData {
   snapshots: GrowthSnapshot[];
   latest: GrowthSnapshot | null;
+  comparisons: {
+    days7: {
+      tiktokFollowers: {
+        current: number;
+        previous: number;
+        change: number;
+        changePercent: number;
+      };
+      instagramFollowers: {
+        current: number;
+        previous: number;
+        change: number;
+        changePercent: number;
+      };
+    } | null;
+    days30: {
+      tiktokFollowers: {
+        current: number;
+        previous: number;
+        change: number;
+        changePercent: number;
+      };
+      instagramFollowers: {
+        current: number;
+        previous: number;
+        change: number;
+        changePercent: number;
+      };
+    } | null;
+  };
   weekOverWeek: {
     tiktokFollowers: {
       current: number;

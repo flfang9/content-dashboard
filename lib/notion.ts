@@ -243,6 +243,7 @@ export async function updatePostMetrics(
   if (metrics.saves !== undefined) {
     properties[`${prefix === 'TikTok' ? 'TikTok' : 'IG'} Saves`] = { number: toNum(metrics.saves) };
   }
+  properties['Last Synced'] = { date: { start: new Date().toISOString() } };
 
   console.log(`Updating ${platform} metrics for page ${pageId}:`, properties);
 

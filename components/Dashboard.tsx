@@ -365,6 +365,11 @@ function PostRow({
                 <p className="text-xs text-gray-500">{post.platform}</p>
               )}
             </div>
+            {post.lastSynced && (
+              <p className="text-[10px] text-gray-600 mt-1">
+                Synced {new Date(post.lastSynced).toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
       </td>
@@ -416,6 +421,14 @@ export default function Dashboard() {
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
   const [growthData, setGrowthData] = useState<GrowthData | null>(null);
   const [growthError, setGrowthError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    kind: 'success' | 'error';
+    message: string;
+    syncedAt?: string;
+    growthAction?: string;
+    importErrors?: string[];
+    failedPosts?: string[];
+  } | null>(null);
 
   const handleVideoClick = useCallback((post: ContentPost) => {
     setSelectedVideo(post);
@@ -510,18 +523,34 @@ export default function Dashboard() {
   const triggerSync = async () => {
     try {
       setSyncing(true);
+      setSyncStatus(null);
       const response = await fetch('/api/sync', { method: 'POST' });
       const data = await response.json();
 
       if (response.ok) {
         // Refetch data after sync
         await fetchData();
-        alert(`Sync complete: ${data.message}`);
+        setSyncStatus({
+          kind: 'success',
+          message: data.message,
+          syncedAt: data.syncedAt,
+          growthAction: data.growth?.action,
+          importErrors: data.importErrors,
+          failedPosts: (data.results || [])
+            .filter((result: any) => !result.success)
+            .map((result: any) => result.title),
+        });
       } else {
-        alert(`Sync failed: ${data.error}`);
+        setSyncStatus({
+          kind: 'error',
+          message: data.details || data.error || 'Sync failed',
+        });
       }
     } catch (err) {
-      alert('Sync failed');
+      setSyncStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Sync failed',
+      });
     } finally {
       setSyncing(false);
     }
@@ -786,6 +815,50 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {syncStatus && (
+          <div
+            className={`rounded-xl border p-4 mb-6 ${
+              syncStatus.kind === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/20'
+                : 'bg-red-500/10 border-red-500/20'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className={`text-sm font-medium ${syncStatus.kind === 'success' ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {syncStatus.kind === 'success' ? 'Sync Complete' : 'Sync Failed'}
+                </p>
+                <p className="text-sm text-white mt-1">{syncStatus.message}</p>
+                {syncStatus.syncedAt && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Synced at {new Date(syncStatus.syncedAt).toLocaleString()}
+                    {syncStatus.growthAction ? ` • Growth snapshot ${syncStatus.growthAction}` : ''}
+                  </p>
+                )}
+                {syncStatus.importErrors && syncStatus.importErrors.length > 0 && (
+                  <p className="text-xs text-amber-300 mt-2">
+                    Import warnings: {syncStatus.importErrors.join(' | ')}
+                  </p>
+                )}
+                {syncStatus.failedPosts && syncStatus.failedPosts.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Not fully synced: {syncStatus.failedPosts.join(', ')}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSyncStatus(null)}
+                className="text-gray-500 hover:text-white transition-colors"
+                aria-label="Dismiss sync status"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Platform Tabs */}
         <div className="flex items-center gap-2 mb-8">
@@ -1158,6 +1231,61 @@ export default function Dashboard() {
               )}
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+              <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                <p className="text-xs text-gray-500 mb-1">TikTok 7D</p>
+                <p className="text-xl font-semibold text-white">
+                  {growthData.comparisons.days7
+                    ? `${growthData.comparisons.days7.tiktokFollowers.change > 0 ? '+' : ''}${formatNumber(growthData.comparisons.days7.tiktokFollowers.change)}`
+                    : '-'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {growthData.comparisons.days7
+                    ? `${growthData.comparisons.days7.tiktokFollowers.changePercent > 0 ? '+' : ''}${growthData.comparisons.days7.tiktokFollowers.changePercent}% vs 7d`
+                    : 'Need more daily snapshots'}
+                </p>
+              </div>
+              <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                <p className="text-xs text-gray-500 mb-1">Instagram 7D</p>
+                <p className="text-xl font-semibold text-white">
+                  {growthData.comparisons.days7
+                    ? `${growthData.comparisons.days7.instagramFollowers.change > 0 ? '+' : ''}${formatNumber(growthData.comparisons.days7.instagramFollowers.change)}`
+                    : '-'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {growthData.comparisons.days7
+                    ? `${growthData.comparisons.days7.instagramFollowers.changePercent > 0 ? '+' : ''}${growthData.comparisons.days7.instagramFollowers.changePercent}% vs 7d`
+                    : 'Need more daily snapshots'}
+                </p>
+              </div>
+              <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                <p className="text-xs text-gray-500 mb-1">TikTok 30D</p>
+                <p className="text-xl font-semibold text-white">
+                  {growthData.comparisons.days30
+                    ? `${growthData.comparisons.days30.tiktokFollowers.change > 0 ? '+' : ''}${formatNumber(growthData.comparisons.days30.tiktokFollowers.change)}`
+                    : '-'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {growthData.comparisons.days30
+                    ? `${growthData.comparisons.days30.tiktokFollowers.changePercent > 0 ? '+' : ''}${growthData.comparisons.days30.tiktokFollowers.changePercent}% vs 30d`
+                    : 'Need more daily snapshots'}
+                </p>
+              </div>
+              <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+                <p className="text-xs text-gray-500 mb-1">Instagram 30D</p>
+                <p className="text-xl font-semibold text-white">
+                  {growthData.comparisons.days30
+                    ? `${growthData.comparisons.days30.instagramFollowers.change > 0 ? '+' : ''}${formatNumber(growthData.comparisons.days30.instagramFollowers.change)}`
+                    : '-'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {growthData.comparisons.days30
+                    ? `${growthData.comparisons.days30.instagramFollowers.changePercent > 0 ? '+' : ''}${growthData.comparisons.days30.instagramFollowers.changePercent}% vs 30d`
+                    : 'Need more daily snapshots'}
+                </p>
+              </div>
+            </div>
+
             {/* Follower Stats Cards */}
             {growthData.latest && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -1251,6 +1379,12 @@ export default function Dashboard() {
                 Instagram Followers
               </span>
             </div>
+
+            {growthData.snapshots.length < 7 && (
+              <p className="text-xs text-gray-500 mt-4">
+                Historical follower backfill is not being fabricated. This chart will become more useful as daily snapshots accumulate from future syncs.
+              </p>
+            )}
           </div>
         )}
 
