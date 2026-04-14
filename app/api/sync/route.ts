@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchPostedForSync, updatePostMetrics, updateEngagementRate, upsertGrowthSnapshot, getExistingInstagramShortcodes, createInstagramPost } from '@/lib/notion';
+import { fetchPostedForSync, updatePostMetrics, updateEngagementRate, upsertGrowthSnapshot, getExistingInstagramShortcodes, createInstagramPost, getDashboardDateString } from '@/lib/notion';
 import { scrapeMetrics, scrapeTikTokProfile, getInstagramAccountStats, fetchAllInstagramMedia, clearInstagramCache } from '@/lib/scrapers';
 
 export const dynamic = 'force-dynamic';
@@ -153,7 +153,7 @@ async function runSync() {
       const igViews = postedPosts.reduce((sum, p) => sum + (p.igViews || 0), 0);
       const igLikes = postedPosts.reduce((sum, p) => sum + (p.igLikes || 0), 0);
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getDashboardDateString();
       const action = await upsertGrowthSnapshot({
         date: today,
         tiktokFollowers: tiktokProfile?.followers || 0,
