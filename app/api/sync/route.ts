@@ -51,8 +51,8 @@ async function runSync() {
           importErrors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
         }
 
-        // Rate limit
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Rate limit (reduced for faster sync)
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     } catch (err) {
       console.error('Instagram import error:', err);
@@ -83,8 +83,8 @@ async function runSync() {
         } catch (error) {
           errors.push(`TikTok: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Rate limiting (reduced)
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Sync Instagram if URL exists
@@ -101,8 +101,8 @@ async function runSync() {
         } catch (error) {
           errors.push(`Instagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Rate limiting (reduced)
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Update engagement rate after syncing metrics

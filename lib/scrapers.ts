@@ -321,8 +321,8 @@ export async function fetchAllInstagramMedia(): Promise<InstagramMediaItem[]> {
 
     enrichedMedia.push(item);
 
-    // Rate limit
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Rate limit (reduced)
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 
   return enrichedMedia;
