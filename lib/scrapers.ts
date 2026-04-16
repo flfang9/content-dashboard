@@ -123,6 +123,12 @@ async function scrapeTikTokPage(url: string): Promise<ScrapedMetrics | null> {
 
 // Scrape TikTok photo posts using headless browser
 async function scrapeTikTokWithBrowser(url: string): Promise<ScrapedMetrics | null> {
+  // Skip browser scraping on Vercel - too slow and causes timeouts
+  if (process.env.VERCEL) {
+    console.log('TikTok photo post detected on Vercel - skipping browser scrape (manual entry needed)');
+    return null;
+  }
+
   let browser = null;
   try {
     // Dynamic import for serverless compatibility
@@ -131,8 +137,8 @@ async function scrapeTikTokWithBrowser(url: string): Promise<ScrapedMetrics | nu
     let executablePath: string;
     let args: string[] = [];
 
-    // Check if running in Vercel/serverless
-    if (process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.VERCEL) {
+    // Check if running in Lambda (non-Vercel serverless)
+    if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
       const chromium = await import('@sparticuz/chromium');
       executablePath = await chromium.default.executablePath();
       args = chromium.default.args;
