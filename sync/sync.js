@@ -13,8 +13,8 @@ require("dotenv").config();
 const { Client } = require("@notionhq/client");
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID?.trim();
+const notion = new Client({ auth: process.env.NOTION_TOKEN?.trim() });
 
 // ─── TikTok Scraper ───────────────────────────────────────────────────────────
 

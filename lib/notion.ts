@@ -2,11 +2,11 @@ import { Client } from '@notionhq/client';
 import { ContentPost, NotionPage } from '@/types';
 
 const notion = new Client({
-  auth: process.env.NOTION_API_KEY,
+  auth: process.env.NOTION_API_KEY?.trim(),
 });
 
-const databaseId = process.env.NOTION_DATABASE_ID!;
-const growthDatabaseId = process.env.NOTION_GROWTH_DATABASE_ID;
+const databaseId = process.env.NOTION_DATABASE_ID!.trim();
+const growthDatabaseId = process.env.NOTION_GROWTH_DATABASE_ID?.trim();
 
 // Growth snapshot type for tracking follower counts over time
 export interface GrowthSnapshot {
