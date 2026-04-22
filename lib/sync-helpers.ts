@@ -1,0 +1,166 @@
+import {
+  fetchPostedForSync,
+  updatePostMetrics,
+  updateEngagementRate,
+  upsertGrowthSnapshot,
+  getExistingInstagramShortcodes,
+  createInstagramPost,
+  getDashboardDateString,
+} from '@/lib/notion';
+import {
+  scrapeMetrics,
+  scrapeTikTokProfile,
+  getInstagramAccountStats,
+  fetchAllInstagramMedia,
+  clearInstagramCache,
+} from '@/lib/scrapers';
+
+export type GrowthResult =
+  | { success: true; action: 'created' | 'updated'; tiktokFollowers?: number; instagramFollowers?: number }
+  | { success: false; error: string };
+
+export type PostSyncResult = {
+  id: string;
+  title: string;
+  success: boolean;
+  error?: string;
+  platforms?: string[];
+};
+
+// Fast: IG Graph API + TikTok HTML scrape + sum of stored post metrics.
+// Safe to run on Vercel cron (typically completes in < 5s).
+export async function runGrowthSnapshot(): Promise<GrowthResult> {
+  try {
+    const tiktokUsername = process.env.TIKTOK_USERNAME;
+    const tiktokProfile = tiktokUsername ? await scrapeTikTokProfile(tiktokUsername) : null;
+    const igAccount = await getInstagramAccountStats();
+
+    const posts = await fetchPostedForSync();
+    const postedPosts = posts.filter(p => p.status === 'Posted');
+    const tiktokViews = postedPosts.reduce((s, p) => s + (p.tiktokViews || 0), 0);
+    const tiktokLikes = postedPosts.reduce((s, p) => s + (p.tiktokLikes || 0), 0);
+    const igViews = postedPosts.reduce((s, p) => s + (p.igViews || 0), 0);
+    const igLikes = postedPosts.reduce((s, p) => s + (p.igLikes || 0), 0);
+
+    const action = await upsertGrowthSnapshot({
+      date: getDashboardDateString(),
+      tiktokFollowers: tiktokProfile?.followers || 0,
+      tiktokTotalLikes: tiktokProfile?.likes || 0,
+      tiktokVideos: tiktokProfile?.videos || 0,
+      instagramFollowers: igAccount?.followers || 0,
+      instagramPosts: igAccount?.postsCount || 0,
+      tiktokViews,
+      tiktokLikes,
+      instagramViews: igViews,
+      instagramLikes: igLikes,
+    });
+
+    return {
+      success: true,
+      action,
+      tiktokFollowers: tiktokProfile?.followers,
+      instagramFollowers: igAccount?.followers,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// Medium: auto-import new Instagram posts into the content database.
+export async function runInstagramImport(): Promise<{ imported: number; errors: string[] }> {
+  clearInstagramCache();
+  const errors: string[] = [];
+  let imported = 0;
+
+  try {
+    const existingShortcodes = await getExistingInstagramShortcodes();
+    const igMedia = await fetchAllInstagramMedia();
+
+    for (const media of igMedia) {
+      if (existingShortcodes.has(media.shortcode)) continue;
+
+      try {
+        const title = media.caption
+          ? media.caption.split('\n')[0].slice(0, 80)
+          : `Instagram ${media.shortcode}`;
+
+        await createInstagramPost({
+          title,
+          url: media.permalink,
+          postDate: media.timestamp?.split('T')[0],
+          views: media.views,
+          likes: media.likes,
+          comments: media.comments,
+          shares: media.shares,
+          saves: media.saves,
+        });
+
+        imported++;
+      } catch (err) {
+        errors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+      }
+
+      await new Promise(r => setTimeout(r, 100));
+    }
+  } catch (err) {
+    errors.push(`Import failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+  }
+
+  return { imported, errors };
+}
+
+// Slow: per-post Puppeteer scrape. Can take many minutes; will exceed
+// Vercel's hobby-tier 60s limit. Intended for local/CLI execution.
+export async function runPostSync(): Promise<{ results: PostSyncResult[]; successCount: number }> {
+  const posts = await fetchPostedForSync();
+  const results: PostSyncResult[] = [];
+
+  for (const post of posts) {
+    const syncedPlatforms: string[] = [];
+    const errors: string[] = [];
+
+    if (post.tiktokUrl) {
+      try {
+        const metrics = await scrapeMetrics(post.tiktokUrl);
+        if (metrics) {
+          await updatePostMetrics(post.id, 'TikTok', metrics);
+          syncedPlatforms.push('TikTok');
+        } else {
+          errors.push('TikTok: No metrics returned');
+        }
+      } catch (error) {
+        errors.push(`TikTok: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    if (post.igUrl) {
+      try {
+        const metrics = await scrapeMetrics(post.igUrl);
+        if (metrics) {
+          await updatePostMetrics(post.id, 'Instagram', metrics);
+          syncedPlatforms.push('Instagram');
+        } else {
+          errors.push('Instagram: No metrics returned');
+        }
+      } catch (error) {
+        errors.push(`Instagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    if (syncedPlatforms.length > 0) {
+      await updateEngagementRate(post.id);
+      results.push({ id: post.id, title: post.title, success: true, platforms: syncedPlatforms });
+    } else if (errors.length > 0) {
+      results.push({ id: post.id, title: post.title, success: false, error: errors.join('; ') });
+    } else {
+      results.push({ id: post.id, title: post.title, success: false, error: 'No URLs to sync' });
+    }
+  }
+
+  return { results, successCount: results.filter(r => r.success).length };
+}
