@@ -275,7 +275,8 @@ function getEngagementForFilter(post: ContentPost, filter: PlatformFilter): numb
   const engagements =
     getLikesForFilter(post, filter) +
     getCommentsForFilter(post, filter) +
-    getSharesForFilter(post, filter);
+    getSharesForFilter(post, filter) +
+    getSavesForFilter(post, filter);
 
   if (views <= 0) return 0;
   return Math.round(((engagements / views) * 100) * 100) / 100;
@@ -580,6 +581,7 @@ export default function Dashboard() {
             likes: post.tiktokLikes || 0,
             comments: post.tiktokComments || 0,
             shares: post.tiktokShares || 0,
+            saves: 0,
             color: PLATFORM_COLORS['TikTok'],
           });
         }
@@ -593,6 +595,7 @@ export default function Dashboard() {
           existing.likes += post.igLikes || 0;
           existing.comments += post.igComments || 0;
           existing.shares += post.igShares || 0;
+          existing.saves += post.igSaves || 0;
         } else {
           acc.push({
             platform: 'Instagram',
@@ -601,17 +604,18 @@ export default function Dashboard() {
             likes: post.igLikes || 0,
             comments: post.igComments || 0,
             shares: post.igShares || 0,
+            saves: post.igSaves || 0,
             color: PLATFORM_COLORS['Instagram'],
           });
         }
       }
     }
     return acc;
-  }, [] as Array<{ platform: string; posts: number; views: number; likes: number; comments: number; shares: number; color: string }>)
+  }, [] as Array<{ platform: string; posts: number; views: number; likes: number; comments: number; shares: number; saves: number; color: string }>)
   .map((entry) => ({
     ...entry,
     engagement: entry.views > 0
-      ? Math.round((((entry.likes + entry.comments + entry.shares) / entry.views) * 100) * 100) / 100
+      ? Math.round((((entry.likes + entry.comments + entry.shares + entry.saves) / entry.views) * 100) * 100) / 100
       : 0,
   }));
 
@@ -664,7 +668,8 @@ export default function Dashboard() {
         const engagements =
           getLikesForFilter(post, platformFilter) +
           getCommentsForFilter(post, platformFilter) +
-          getSharesForFilter(post, platformFilter);
+          getSharesForFilter(post, platformFilter) +
+          getSavesForFilter(post, platformFilter);
 
         existing.tiktokViews += tiktokViews;
         existing.instagramViews += instagramViews;

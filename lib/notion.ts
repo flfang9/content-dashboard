@@ -292,8 +292,10 @@ export async function updateEngagementRate(pageId: string): Promise<void> {
     const tiktokShares = props['TikTok Shares']?.number || 0;
     const igShares = props['IG Shares']?.number || 0;
 
+    const igSaves = props['IG Saves']?.number || 0;
+
     const totalViews = tiktokViews + igViews;
-    const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares;
+    const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares + igSaves;
 
     // Calculate engagement rate as decimal (Notion percent format expects 0.0843 for 8.43%)
     const engagementRate = totalViews > 0 ? totalEngagements / totalViews : 0;
