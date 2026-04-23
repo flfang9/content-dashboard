@@ -39,6 +39,7 @@ export interface ContentPost {
   tiktokLikes?: number;
   tiktokComments?: number;
   tiktokShares?: number;
+  tiktokSaves?: number;
   igViews?: number;
   igLikes?: number;
   igComments?: number;

@@ -36,13 +36,14 @@ async function main() {
       const tiktokShares = p['TikTok Shares']?.number || 0;
       const igShares = p['IG Shares']?.number || 0;
       const igSaves = p['IG Saves']?.number || 0;
+      const tiktokSaves = p['TikTok Saves']?.number || 0;
 
       const totalViews = tiktokViews + igViews;
       const totalEngagements =
         tiktokLikes + igLikes +
         tiktokComments + igComments +
         tiktokShares + igShares +
-        igSaves;
+        igSaves + tiktokSaves;
 
       if (totalViews === 0) {
         skipped++;
@@ -59,7 +60,7 @@ async function main() {
         page_id: page.id,
         properties: { 'Calculated Engagement': { number: rate } },
       });
-      console.log(`${(rate * 100).toFixed(2)}%  ${title}  (saves=${igSaves})`);
+      console.log(`${(rate * 100).toFixed(2)}%  ${title}  (ig_saves=${igSaves} tt_saves=${tiktokSaves})`);
       updated++;
     }
 

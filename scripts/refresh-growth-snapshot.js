@@ -153,14 +153,23 @@ async function main() {
   const tt = await getTikTok();
   console.log(`  TikTok: ${tt?.followers ?? 'n/a'} followers, ${tt?.videos ?? 'n/a'} videos`);
 
+  // If TikTok scrape failed (datacenter IP block, UI change, etc.) don't
+  // clobber yesterday's good number with 0 — carry forward.
+  let prev = null;
+  if (!tt) {
+    console.log('  TikTok scrape failed — carrying forward previous snapshot');
+    prev = await lastSnapshot();
+    console.log(`  Previous (${prev?.date}): TikTok ${prev?.tiktokFollowers} followers`);
+  }
+
   console.log('Summing post metrics from Notion...');
   const s = await sumPostMetrics();
 
   const data = {
     date: todayLA(),
-    tiktokFollowers: tt?.followers || 0,
-    tiktokTotalLikes: tt?.likes || 0,
-    tiktokVideos: tt?.videos || 0,
+    tiktokFollowers: tt?.followers ?? prev?.tiktokFollowers ?? 0,
+    tiktokTotalLikes: tt?.likes ?? prev?.tiktokTotalLikes ?? 0,
+    tiktokVideos: tt?.videos ?? prev?.tiktokVideos ?? 0,
     instagramFollowers: ig?.followers || 0,
     instagramPosts: ig?.postsCount || 0,
     tiktokViews: s.tv,

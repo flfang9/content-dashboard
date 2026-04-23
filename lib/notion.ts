@@ -111,13 +111,14 @@ function pageToPost(page: any): ContentPost {
   const tiktokShares = getPropertyValue(props['TikTok Shares']) || 0;
   const igShares = getPropertyValue(props['IG Shares']) || 0;
   const igSaves = getPropertyValue(props['IG Saves']) || 0;
+  const tiktokSaves = getPropertyValue(props['TikTok Saves']) || 0;
 
   // Sum metrics from both platforms
   const views = tiktokViews + igViews;
   const likes = tiktokLikes + igLikes;
   const comments = tiktokComments + igComments;
   const shares = tiktokShares + igShares;
-  const saves = igSaves;
+  const saves = igSaves + tiktokSaves;
 
   return {
     id: page.id,
@@ -156,6 +157,7 @@ function pageToPost(page: any): ContentPost {
     tiktokLikes,
     tiktokComments,
     tiktokShares,
+    tiktokSaves,
     igViews,
     igLikes,
     igComments,
@@ -293,9 +295,10 @@ export async function updateEngagementRate(pageId: string): Promise<void> {
     const igShares = props['IG Shares']?.number || 0;
 
     const igSaves = props['IG Saves']?.number || 0;
+    const tiktokSaves = props['TikTok Saves']?.number || 0;
 
     const totalViews = tiktokViews + igViews;
-    const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares + igSaves;
+    const totalEngagements = tiktokLikes + igLikes + tiktokComments + igComments + tiktokShares + igShares + igSaves + tiktokSaves;
 
     // Calculate engagement rate as decimal (Notion percent format expects 0.0843 for 8.43%)
     const engagementRate = totalViews > 0 ? totalEngagements / totalViews : 0;

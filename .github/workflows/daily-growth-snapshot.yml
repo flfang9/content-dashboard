@@ -1,0 +1,39 @@
+name: Daily Growth Snapshot
+
+# TikTok and Instagram both block Vercel's datacenter IPs, so the Vercel cron
+# silently writes 0 for follower counts. GitHub Actions runs from a different
+# IP range that usually isn't blocked by TikTok. This workflow replaces the
+# Vercel cron for the growth snapshot specifically.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   NOTION_API_KEY
+#   NOTION_DATABASE_ID
+#   NOTION_GROWTH_DATABASE_ID
+#   META_ACCESS_TOKEN
+#   IG_USER_ID
+#   TIKTOK_USERNAME
+
+on:
+  schedule:
+    # 9:00 AM Pacific = 16:00 UTC (standard) / 17:00 UTC (DST). Picking 17:00 UTC.
+    - cron: '0 17 * * *'
+  workflow_dispatch:  # Allow manual runs from the Actions tab
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --no-audit --no-fund
+      - name: Refresh growth snapshot
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_GROWTH_DATABASE_ID: ${{ secrets.NOTION_GROWTH_DATABASE_ID }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
+        run: node scripts/refresh-growth-snapshot.js

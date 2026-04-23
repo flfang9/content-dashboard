@@ -264,8 +264,8 @@ function getSharesForFilter(post: ContentPost, filter: PlatformFilter): number {
 
 function getSavesForFilter(post: ContentPost, filter: PlatformFilter): number {
   if (filter === 'instagram') return post.igSaves || 0;
-  if (filter === 'tiktok') return post.saves || 0;
-  return post.saves || 0;
+  if (filter === 'tiktok') return post.tiktokSaves || 0;
+  return (post.igSaves || 0) + (post.tiktokSaves || 0);
 }
 
 function getEngagementForFilter(post: ContentPost, filter: PlatformFilter): number {
@@ -573,6 +573,7 @@ export default function Dashboard() {
           existing.likes += post.tiktokLikes || 0;
           existing.comments += post.tiktokComments || 0;
           existing.shares += post.tiktokShares || 0;
+          existing.saves += post.tiktokSaves || 0;
         } else {
           acc.push({
             platform: 'TikTok',
@@ -581,7 +582,7 @@ export default function Dashboard() {
             likes: post.tiktokLikes || 0,
             comments: post.tiktokComments || 0,
             shares: post.tiktokShares || 0,
-            saves: 0,
+            saves: post.tiktokSaves || 0,
             color: PLATFORM_COLORS['TikTok'],
           });
         }
@@ -902,7 +903,7 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-8">
           <StatCard
             title={platformFilter === 'all' ? 'Posts' : `${platformFilter === 'tiktok' ? 'TikTok' : 'IG'} Posts`}
             value={filteredStats.totalPosts}
@@ -911,10 +912,11 @@ export default function Dashboard() {
           <StatCard title="Likes" value={filteredStats.totalLikes} />
           <StatCard title="Comments" value={filteredStats.totalComments} />
           <StatCard title="Shares" value={filteredStats.totalShares} />
+          <StatCard title="Saves" value={filteredStats.totalSaves} />
           <StatCard
-            title={platformFilter === 'instagram' ? 'Saves' : 'This Week'}
-            value={platformFilter === 'instagram' ? filteredStats.totalSaves : filteredStats.postsThisWeek}
-            subtitle={platformFilter === 'instagram' ? undefined : 'posts'}
+            title="This Week"
+            value={filteredStats.postsThisWeek}
+            subtitle="posts"
           />
         </div>
 

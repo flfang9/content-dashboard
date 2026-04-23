@@ -6,6 +6,7 @@ import {
   getExistingInstagramShortcodes,
   createInstagramPost,
   getDashboardDateString,
+  fetchGrowthHistory,
 } from '@/lib/notion';
 import {
   scrapeMetrics,
@@ -16,7 +17,13 @@ import {
 } from '@/lib/scrapers';
 
 export type GrowthResult =
-  | { success: true; action: 'created' | 'updated'; tiktokFollowers?: number; instagramFollowers?: number }
+  | {
+      success: true;
+      action: 'created' | 'updated';
+      tiktokFollowers?: number;
+      instagramFollowers?: number;
+      carriedForward?: string[];
+    }
   | { success: false; error: string };
 
 export type PostSyncResult = {
@@ -42,11 +49,30 @@ export async function runGrowthSnapshot(): Promise<GrowthResult> {
     const igViews = postedPosts.reduce((s, p) => s + (p.igViews || 0), 0);
     const igLikes = postedPosts.reduce((s, p) => s + (p.igLikes || 0), 0);
 
+    // TikTok blocks datacenter IPs. When the scrape fails (null), carry
+    // forward the previous snapshot's values rather than writing 0 and
+    // clobbering yesterday's good data.
+    let carriedForward: string[] = [];
+    let tiktokFollowers = tiktokProfile?.followers ?? 0;
+    let tiktokTotalLikes = tiktokProfile?.likes ?? 0;
+    let tiktokVideos = tiktokProfile?.videos ?? 0;
+    if (!tiktokProfile) {
+      const history = await fetchGrowthHistory(7);
+      const prev = history[history.length - 1];
+      if (prev) {
+        tiktokFollowers = prev.tiktokFollowers || 0;
+        tiktokTotalLikes = prev.tiktokTotalLikes || 0;
+        tiktokVideos = prev.tiktokVideos || 0;
+        carriedForward.push('tiktok');
+        console.log(`TikTok scrape failed, carrying forward from ${prev.date}: ${tiktokFollowers} followers`);
+      }
+    }
+
     const action = await upsertGrowthSnapshot({
       date: getDashboardDateString(),
-      tiktokFollowers: tiktokProfile?.followers || 0,
-      tiktokTotalLikes: tiktokProfile?.likes || 0,
-      tiktokVideos: tiktokProfile?.videos || 0,
+      tiktokFollowers,
+      tiktokTotalLikes,
+      tiktokVideos,
       instagramFollowers: igAccount?.followers || 0,
       instagramPosts: igAccount?.postsCount || 0,
       tiktokViews,
@@ -58,8 +84,9 @@ export async function runGrowthSnapshot(): Promise<GrowthResult> {
     return {
       success: true,
       action,
-      tiktokFollowers: tiktokProfile?.followers,
+      tiktokFollowers,
       instagramFollowers: igAccount?.followers,
+      carriedForward: carriedForward.length > 0 ? carriedForward : undefined,
     };
   } catch (error) {
     return {
