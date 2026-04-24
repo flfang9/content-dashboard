@@ -522,31 +522,64 @@ export default function Dashboard() {
   };
 
   const triggerSync = async () => {
+    // Non-JSON bodies (Vercel timeout pages, gateway errors) crash response.json().
+    // Fall back to text so the real error surfaces instead of "Unexpected token".
+    const safeParse = async (res: Response): Promise<any> => {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { error: text.slice(0, 200).trim() || `HTTP ${res.status}` };
+      }
+    };
+
+    const callSync = async (path: string) => {
+      const res = await fetch(path, { method: 'POST' });
+      const data = await safeParse(res);
+      return { ok: res.ok, data };
+    };
+
     try {
       setSyncing(true);
       setSyncStatus(null);
-      const response = await fetch('/api/sync', { method: 'POST' });
-      const data = await response.json();
 
-      if (response.ok) {
-        // Refetch data after sync
+      const [growthSettled, postsSettled] = await Promise.allSettled([
+        callSync('/api/sync/growth'),
+        callSync('/api/sync/posts'),
+      ]);
+
+      const growth = growthSettled.status === 'fulfilled'
+        ? growthSettled.value
+        : { ok: false, data: { error: growthSettled.reason?.message || 'Network error' } };
+      const posts = postsSettled.status === 'fulfilled'
+        ? postsSettled.value
+        : { ok: false, data: { error: postsSettled.reason?.message || 'Network error' } };
+
+      const growthOk = growth.ok && growth.data?.growth?.success !== false;
+      const postsOk = posts.ok;
+
+      if (growthOk || postsOk) {
         await fetchData();
-        setSyncStatus({
-          kind: 'success',
-          message: data.message,
-          syncedAt: data.syncedAt,
-          growthAction: data.growth?.action,
-          importErrors: data.importErrors,
-          failedPosts: (data.results || [])
-            .filter((result: any) => !result.success)
-            .map((result: any) => result.title),
-        });
-      } else {
-        setSyncStatus({
-          kind: 'error',
-          message: data.details || data.error || 'Sync failed',
-        });
       }
+
+      const parts: string[] = [];
+      if (growthOk) parts.push('Growth updated');
+      else parts.push(`Growth failed: ${growth.data?.details || growth.data?.error || 'unknown'}`);
+      if (postsOk) parts.push(posts.data?.message || 'Posts updated');
+      else parts.push(`Posts failed: ${posts.data?.details || posts.data?.error || 'unknown'}`);
+
+      setSyncStatus({
+        kind: growthOk && postsOk ? 'success' : 'error',
+        message: parts.join(' · '),
+        syncedAt: new Date().toISOString(),
+        growthAction: growthOk ? growth.data?.growth?.action : undefined,
+        importErrors: postsOk ? posts.data?.importErrors : undefined,
+        failedPosts: postsOk
+          ? (posts.data?.results || [])
+              .filter((r: any) => !r.success)
+              .map((r: any) => r.title)
+          : [],
+      });
     } catch (err) {
       setSyncStatus({
         kind: 'error',
