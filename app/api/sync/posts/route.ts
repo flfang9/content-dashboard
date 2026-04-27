@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runPostSync, runInstagramImport } from '@/lib/sync-helpers';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 async function handle() {
   const importResult = await runInstagramImport();

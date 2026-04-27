@@ -144,8 +144,18 @@ export async function runInstagramImport(): Promise<{ imported: number; errors: 
 export async function runPostSync(): Promise<{ results: PostSyncResult[]; successCount: number }> {
   const posts = await fetchPostedForSync();
   const results: PostSyncResult[] = [];
+  const SKIP_IF_SYNCED_WITHIN_MS = 6 * 60 * 60 * 1000;
+  const now = Date.now();
 
   for (const post of posts) {
+    if (post.lastSynced) {
+      const lastSyncedAt = new Date(post.lastSynced).getTime();
+      if (Number.isFinite(lastSyncedAt) && now - lastSyncedAt < SKIP_IF_SYNCED_WITHIN_MS) {
+        results.push({ id: post.id, title: post.title, success: true, platforms: ['skipped'] });
+        continue;
+      }
+    }
+
     const syncedPlatforms: string[] = [];
     const errors: string[] = [];
 
