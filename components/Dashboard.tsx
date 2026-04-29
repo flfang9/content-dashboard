@@ -386,15 +386,20 @@ function PostRow({
         </span>
       </td>
       <td className="py-3 px-4">
-        <span
-          className="px-2 py-1 rounded-full text-xs"
-          style={{
-            backgroundColor: `${PILLAR_COLORS[post.pillar] || '#666'}20`,
-            color: PILLAR_COLORS[post.pillar] || '#999',
-          }}
-        >
-          {post.pillar}
-        </span>
+        <div className="flex flex-wrap gap-1">
+          {post.pillars.map((p) => (
+            <span
+              key={p}
+              className="px-2 py-1 rounded-full text-xs"
+              style={{
+                backgroundColor: `${PILLAR_COLORS[p] || '#666'}20`,
+                color: PILLAR_COLORS[p] || '#999',
+              }}
+            >
+              {p}
+            </span>
+          ))}
+        </div>
       </td>
       <td className="py-3 px-4 text-right text-gray-300">
         {displayMetric(views)}
@@ -654,15 +659,17 @@ export default function Dashboard() {
   }));
 
   const pillarData = filteredPosts.reduce((acc, post) => {
-    const existing = acc.find(p => p.pillar === post.pillar);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      acc.push({
-        pillar: post.pillar,
-        count: 1,
-        color: PILLAR_COLORS[post.pillar] || '#666',
-      });
+    for (const pillar of post.pillars) {
+      const existing = acc.find(p => p.pillar === pillar);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        acc.push({
+          pillar,
+          count: 1,
+          color: PILLAR_COLORS[pillar] || '#666',
+        });
+      }
     }
     return acc;
   }, [] as Array<{ pillar: string; count: number; color: string }>);
@@ -756,16 +763,18 @@ export default function Dashboard() {
     for (const post of postedPosts) {
       const views = getViewsForFilter(post, platformFilter);
       const engagement = getEngagementForFilter(post, platformFilter);
-      const pillarEntry = pillarMap.get(post.pillar) || {
-        pillar: post.pillar,
-        posts: 0,
-        views: 0,
-        engagementTotal: 0,
-      };
-      pillarEntry.posts += 1;
-      pillarEntry.views += views;
-      pillarEntry.engagementTotal += engagement;
-      pillarMap.set(post.pillar, pillarEntry);
+      for (const pillar of post.pillars) {
+        const pillarEntry = pillarMap.get(pillar) || {
+          pillar,
+          posts: 0,
+          views: 0,
+          engagementTotal: 0,
+        };
+        pillarEntry.posts += 1;
+        pillarEntry.views += views;
+        pillarEntry.engagementTotal += engagement;
+        pillarMap.set(pillar, pillarEntry);
+      }
 
       if (post.postDate) {
         const day = new Date(post.postDate).toLocaleDateString('en-US', { weekday: 'short' });
@@ -1002,12 +1011,14 @@ export default function Dashboard() {
                     width={70}
                   />
                   <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                     contentStyle={{
                       backgroundColor: '#1a1a1a',
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
                     labelStyle={{ color: '#fff' }}
+                    itemStyle={{ color: '#e5e5e5' }}
                     formatter={(value: number, name: string) => {
                       if (name === 'Views') return [formatNumber(value), name];
                       if (name === 'Posts') return [value, name];
@@ -1015,7 +1026,7 @@ export default function Dashboard() {
                       return [value, name];
                     }}
                   />
-                  <Bar dataKey="views" name="Views" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="views" name="Views" radius={[0, 4, 4, 0]} activeBar={false}>
                     {platformData.map((entry, index) => (
                       <Cell key={index} fill={entry.color} />
                     ))}
@@ -1056,11 +1067,14 @@ export default function Dashboard() {
                     ))}
                   </Pie>
                   <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                     contentStyle={{
                       backgroundColor: '#1a1a1a',
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
+                    labelStyle={{ color: '#fff' }}
+                    itemStyle={{ color: '#e5e5e5' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -1122,11 +1136,14 @@ export default function Dashboard() {
                     tickFormatter={(value: number) => `${value}%`}
                   />
                   <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                     contentStyle={{
                       backgroundColor: '#1a1a1a',
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
+                    labelStyle={{ color: '#fff' }}
+                    itemStyle={{ color: '#e5e5e5' }}
                     formatter={(value: number, name: string) => {
                       if (name === 'Engagement') return [`${value.toFixed(2)}%`, name];
                       if (name === 'Posts') return [value, name];
@@ -1141,6 +1158,7 @@ export default function Dashboard() {
                       fill="#00f2ea"
                       radius={[4, 4, 0, 0]}
                       name="TikTok Views"
+                      activeBar={false}
                     />
                   )}
                   {platformFilter !== 'tiktok' && (
@@ -1151,6 +1169,7 @@ export default function Dashboard() {
                       fill="#e4405f"
                       radius={[4, 4, 0, 0]}
                       name="Instagram Views"
+                      activeBar={false}
                     />
                   )}
                   <Line
@@ -1206,18 +1225,21 @@ export default function Dashboard() {
                     width={140}
                   />
                   <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                     contentStyle={{
                       backgroundColor: '#1a1a1a',
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
+                    labelStyle={{ color: '#fff' }}
+                    itemStyle={{ color: '#e5e5e5' }}
                     formatter={(value: number, name: string, item: any) => {
                       if (name === 'Engagement') return [`${value.toFixed(2)}%`, name];
                       if (name === 'Views') return [formatNumber(item?.payload?.views || 0), name];
                       return [value, name];
                     }}
                   />
-                  <Bar dataKey="engagement" name="Engagement" radius={[0, 4, 4, 0]} fill="#22c55e" />
+                  <Bar dataKey="engagement" name="Engagement" radius={[0, 4, 4, 0]} fill="#22c55e" activeBar={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1380,11 +1402,14 @@ export default function Dashboard() {
                   <XAxis dataKey="date" tick={{ fill: '#666', fontSize: 12 }} />
                   <YAxis tick={{ fill: '#666', fontSize: 12 }} />
                   <Tooltip
+                    cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                     contentStyle={{
                       backgroundColor: '#1a1a1a',
                       border: '1px solid #262626',
                       borderRadius: '8px',
                     }}
+                    labelStyle={{ color: '#fff' }}
+                    itemStyle={{ color: '#e5e5e5' }}
                     formatter={(value: number, name: string) => [
                       formatNumber(value),
                       name === 'tiktok' ? 'TikTok' : 'Instagram'

@@ -124,7 +124,11 @@ function pageToPost(page: any): ContentPost {
     id: page.id,
     title: getPropertyValue(props['Title']) || getPropertyValue(props['Name']) || 'Untitled',
     status: getPropertyValue(props['Status']) || 'Idea',
-    pillar: getPropertyValue(props['Content Pillar']) || 'Educational',
+    pillars: (() => {
+      const raw = getPropertyValue(props['Content Pillar']);
+      const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      return list.length > 0 ? list : ['Educational'];
+    })(),
     platform,
     hook: getPropertyValue(props['Hook']) || '',
     caption: getPropertyValue(props['Caption']) || '',
