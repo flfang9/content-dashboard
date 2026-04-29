@@ -28,7 +28,13 @@ async function getIG() {
     return null;
   }
   const url = `https://graph.facebook.com/v19.0/${userId}?fields=followers_count,media_count&access_token=${token}`;
-  const r = await fetch(url);
+  let r;
+  try {
+    r = await fetch(url);
+  } catch (e) {
+    console.error(`  IG fetch error: ${e.message}`);
+    return null;
+  }
   if (!r.ok) {
     console.error('  IG error:', await r.text());
     return null;
@@ -43,13 +49,19 @@ async function getTikTok() {
     console.log('  TikTok: TIKTOK_USERNAME missing');
     return null;
   }
-  const r = await fetch(`https://www.tiktok.com/@${username}`, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-    },
-  });
+  let r;
+  try {
+    r = await fetch(`https://www.tiktok.com/@${username}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+    });
+  } catch (e) {
+    console.error(`  TikTok fetch error: ${e.message}`);
+    return null;
+  }
   if (!r.ok) {
     console.error(`  TikTok profile fetch failed: ${r.status}`);
     return null;
@@ -60,7 +72,14 @@ async function getTikTok() {
     console.error('  TikTok profile: data script not found');
     return null;
   }
-  const stats = JSON.parse(m[1])?.['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.['userInfo']?.stats;
+  let parsed;
+  try {
+    parsed = JSON.parse(m[1]);
+  } catch (e) {
+    console.error(`  TikTok: JSON.parse failed — ${e.message}`);
+    return null;
+  }
+  const stats = parsed?.['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.['userInfo']?.stats;
   if (!stats) return null;
   return {
     followers: stats.followerCount || 0,
