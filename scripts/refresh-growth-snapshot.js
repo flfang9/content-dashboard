@@ -89,6 +89,10 @@ async function getTikTok() {
 }
 
 async function sumPostMetrics() {
+  if (!contentDbId) {
+    console.error('  sumPostMetrics: NOTION_DATABASE_ID not set, skipping');
+    return { tv: 0, tl: 0, iv: 0, il: 0 };
+  }
   let cursor, sums = { tv: 0, tl: 0, iv: 0, il: 0 };
   while (true) {
     const r = await notion.databases.query({
@@ -177,12 +181,21 @@ async function main() {
   let prev = null;
   if (!tt) {
     console.log('  TikTok scrape failed — carrying forward previous snapshot');
-    prev = await lastSnapshot();
+    try {
+      prev = await lastSnapshot();
+    } catch (e) {
+      console.error(`  lastSnapshot error (TikTok fields will be 0): ${e.message}`);
+    }
     console.log(`  Previous (${prev?.date}): TikTok ${prev?.tiktokFollowers} followers`);
   }
 
   console.log('Summing post metrics from Notion...');
-  const s = await sumPostMetrics();
+  let s = { tv: 0, tl: 0, iv: 0, il: 0 };
+  try {
+    s = await sumPostMetrics();
+  } catch (e) {
+    console.error(`  sumPostMetrics error (post metrics will be 0): ${e.message}`);
+  }
 
   const data = {
     date: todayLA(),
