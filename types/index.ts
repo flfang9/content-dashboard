@@ -14,7 +14,7 @@ export interface ContentPost {
   id: string;
   title: string;
   status: ContentStatus;
-  pillar: ContentPillar;
+  pillars: ContentPillar[];
   platform: Platform;
   hook: string;
   caption: string;
