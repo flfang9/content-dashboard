@@ -331,36 +331,61 @@ export async function fetchAllInstagramMedia(): Promise<InstagramMediaItem[]> {
 // Get insights for a specific media item
 async function fetchInstagramInsights(mediaId: string, mediaType: string, accessToken: string): Promise<ScrapedMetrics | null> {
   try {
-    // Different metrics for different media types
-    // As of v22.0+: plays/impressions are deprecated
-    // Use reach for views (unique accounts that saw the content)
-    // Reels/Videos: reach, saved, shares
-    // Images/Carousels: reach, saved
+    // For Reels/Videos: request `views` (total plays) — `reach` only counts unique
+    // accounts and significantly under-reports the true view count. Fall back to
+    // `plays` then `reach` if the API rejects `views` on a given account/version.
+    // For Images/Carousels: there's no play count; keep `reach` as the proxy.
     const isVideo = mediaType === 'VIDEO' || mediaType === 'REELS';
-    const metrics = isVideo
-      ? 'reach,saved,shares'
-      : 'reach,saved';
 
-    const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`;
-    const response = await fetch(url);
+    const requestInsights = async (metrics: string) => {
+      const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { ok: false as const, errorText };
+      }
+      const data = await response.json();
+      return { ok: true as const, insights: data.data || [] };
+    };
 
-    if (!response.ok) {
-      // Insights might not be available for all media types
-      const errorText = await response.text();
-      console.log(`No insights available for media ${mediaId}:`, errorText);
-      return null;
+    let insights: any[] = [];
+    let viewsValue: number | undefined;
+
+    if (isVideo) {
+      // Try `views` first (current Graph API metric for total plays on Reels/Videos)
+      let result = await requestInsights('views,reach,saved,shares');
+      if (!result.ok) {
+        // Older API or unsupported — try `plays` (deprecated v22+ but still works in v19)
+        result = await requestInsights('plays,reach,saved,shares');
+        if (!result.ok) {
+          // Final fallback: reach-only (under-reports but better than nothing)
+          result = await requestInsights('reach,saved,shares');
+          if (!result.ok) {
+            console.log(`No insights available for media ${mediaId}:`, result.errorText);
+            return null;
+          }
+        }
+      }
+      insights = result.insights;
+      viewsValue =
+        insights.find((i: any) => i.name === 'views')?.values?.[0]?.value ??
+        insights.find((i: any) => i.name === 'plays')?.values?.[0]?.value ??
+        insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
+    } else {
+      const result = await requestInsights('reach,saved');
+      if (!result.ok) {
+        console.log(`No insights available for media ${mediaId}:`, result.errorText);
+        return null;
+      }
+      insights = result.insights;
+      viewsValue = insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
     }
 
-    const data = await response.json();
-    const insights = data.data || [];
-
-    const reach = insights.find((i: any) => i.name === 'reach')?.values?.[0]?.value;
     const saved = insights.find((i: any) => i.name === 'saved')?.values?.[0]?.value;
     const shares = insights.find((i: any) => i.name === 'shares')?.values?.[0]?.value;
 
     return {
-      // Use reach as views (unique accounts that saw the content)
-      views: reach || 0,
+      views: viewsValue || 0,
       saves: saved,
       shares: shares,
     };
