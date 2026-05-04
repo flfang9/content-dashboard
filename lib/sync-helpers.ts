@@ -65,7 +65,10 @@ export async function runGrowthSnapshot(): Promise<GrowthResult> {
     let tiktokVideos = tiktokProfile?.videos ?? 0;
     if (!tiktokProfile) {
       const history = await fetchGrowthHistory(7);
-      const prev = history[history.length - 1];
+      // Skip today's row — when this is the second run of the day, today's row
+      // already exists and re-using it just propagates bad/old data.
+      const today = getDashboardDateString();
+      const prev = [...history].reverse().find(r => r.date && r.date !== today && r.tiktokFollowers > 0);
       if (prev) {
         tiktokFollowers = prev.tiktokFollowers || 0;
         tiktokTotalLikes = prev.tiktokTotalLikes || 0;
