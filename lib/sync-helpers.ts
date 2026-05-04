@@ -142,57 +142,73 @@ export async function runTikTokRefresh(): Promise<{ updated: number; failed: num
 
 // Medium: refresh IG metrics for existing posts and import any new ones.
 // Uses the Graph API for everything (fast, reliable — safe in a cron path).
+// Updates run in parallel batches so the function fits in Vercel's 60s budget.
 export async function runInstagramImport(): Promise<{ imported: number; updated: number; errors: string[] }> {
   clearInstagramCache();
   const errors: string[] = [];
   let imported = 0;
   let updated = 0;
+  const BATCH_SIZE = 5;
 
   try {
     const existingByShortcode = await getInstagramPostsByShortcode();
     const igMedia = await fetchAllInstagramMedia();
 
+    const updates: Array<{ pageId: string; media: typeof igMedia[number] }> = [];
+    const creates: typeof igMedia = [];
+
     for (const media of igMedia) {
       const existingPageId = existingByShortcode.get(media.shortcode);
+      if (existingPageId) updates.push({ pageId: existingPageId, media });
+      else if (process.env.DISABLE_IG_AUTO_IMPORT !== 'true') creates.push(media);
+    }
 
-      if (existingPageId) {
-        try {
-          await updatePostMetrics(existingPageId, 'Instagram', {
-            views: media.views,
-            likes: media.likes,
-            comments: media.comments,
-            shares: media.shares,
-            saves: media.saves,
-          });
-          await updateEngagementRate(existingPageId);
-          updated++;
-        } catch (err) {
-          errors.push(`update ${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
-        }
-      } else if (process.env.DISABLE_IG_AUTO_IMPORT !== 'true') {
-        try {
-          const title = media.caption
-            ? media.caption.split('\n')[0].slice(0, 80)
-            : `Instagram ${media.shortcode}`;
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const batch = updates.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async ({ pageId, media }) => {
+          try {
+            await updatePostMetrics(pageId, 'Instagram', {
+              views: media.views,
+              likes: media.likes,
+              comments: media.comments,
+              shares: media.shares,
+              saves: media.saves,
+            });
+            await updateEngagementRate(pageId);
+            updated++;
+          } catch (err) {
+            errors.push(`update ${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+          }
+        })
+      );
+    }
 
-          await createInstagramPost({
-            title,
-            url: media.permalink,
-            postDate: media.timestamp?.split('T')[0],
-            views: media.views,
-            likes: media.likes,
-            comments: media.comments,
-            shares: media.shares,
-            saves: media.saves,
-          });
+    for (let i = 0; i < creates.length; i += BATCH_SIZE) {
+      const batch = creates.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async media => {
+          try {
+            const title = media.caption
+              ? media.caption.split('\n')[0].slice(0, 80)
+              : `Instagram ${media.shortcode}`;
 
-          imported++;
-        } catch (err) {
-          errors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
-        }
-      }
-
-      await new Promise(r => setTimeout(r, 100));
+            await createInstagramPost({
+              title,
+              url: media.permalink,
+              postDate: media.timestamp?.split('T')[0],
+              views: media.views,
+              likes: media.likes,
+              comments: media.comments,
+              shares: media.shares,
+              saves: media.saves,
+            });
+            imported++;
+          } catch (err) {
+            errors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+          }
+        })
+      );
     }
   } catch (err) {
     errors.push(`Import failed: ${err instanceof Error ? err.message : 'Unknown'}`);
