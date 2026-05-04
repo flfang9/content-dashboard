@@ -162,7 +162,7 @@ export async function runInstagramImport(): Promise<{ imported: number; updated:
         } catch (err) {
           errors.push(`update ${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
         }
-      } else {
+      } else if (process.env.DISABLE_IG_AUTO_IMPORT !== 'true') {
         try {
           const title = media.caption
             ? media.caption.split('\n')[0].slice(0, 80)
