@@ -282,6 +282,76 @@ function getEngagementForFilter(post: ContentPost, filter: PlatformFilter): numb
   return Math.round(((engagements / views) * 100) * 100) / 100;
 }
 
+function SyncHealthBadge({
+  health,
+}: {
+  health: {
+    growth: { lastDate: string | null; lastEditedAt: string | null; hoursSinceLastEdit: number | null };
+    platforms: { tiktok: { total: number; stale: number }; instagram: { total: number; stale: number } };
+    staleThresholdHours: number;
+  };
+}) {
+  const { growth, platforms, staleThresholdHours } = health;
+  const h = growth.hoursSinceLastEdit;
+
+  let tone: 'green' | 'yellow' | 'red' = 'green';
+  let label: string;
+
+  if (h === null) {
+    tone = 'red';
+    label = 'No snapshots yet';
+  } else if (h < 24) {
+    tone = 'green';
+    label = `Synced ${h < 1 ? `${Math.round(h * 60)}m` : `${Math.round(h)}h`} ago`;
+  } else if (h < 48) {
+    tone = 'yellow';
+    label = `Last sync ${Math.round(h)}h ago`;
+  } else {
+    tone = 'red';
+    label = `Stale: last sync ${Math.round(h)}h ago`;
+  }
+
+  const ttStale = platforms.tiktok.stale;
+  const igStale = platforms.instagram.stale;
+  if (tone === 'green' && (ttStale > 0 || igStale > 0)) {
+    tone = 'yellow';
+  }
+
+  const colors = {
+    green: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
+    yellow: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
+    red: 'bg-red-500/10 border-red-500/30 text-red-300',
+  }[tone];
+
+  const dot = {
+    green: 'bg-emerald-400',
+    yellow: 'bg-amber-400',
+    red: 'bg-red-400',
+  }[tone];
+
+  const tooltip =
+    `Latest snapshot: ${growth.lastDate || 'none'}\n` +
+    `TikTok: ${platforms.tiktok.total - ttStale}/${platforms.tiktok.total} fresh (>${staleThresholdHours}h stale: ${ttStale})\n` +
+    `Instagram: ${platforms.instagram.total - igStale}/${platforms.instagram.total} fresh (>${staleThresholdHours}h stale: ${igStale})`;
+
+  return (
+    <span
+      title={tooltip}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs ${colors}`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      {label}
+      {(ttStale > 0 || igStale > 0) && (
+        <span className="text-gray-400">
+          • {ttStale > 0 ? `TT ${ttStale} stale` : ''}
+          {ttStale > 0 && igStale > 0 ? ', ' : ''}
+          {igStale > 0 ? `IG ${igStale} stale` : ''}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function StatCard({
   title,
   value,
@@ -435,6 +505,11 @@ export default function Dashboard() {
     importErrors?: string[];
     failedPosts?: string[];
   } | null>(null);
+  const [syncHealth, setSyncHealth] = useState<{
+    growth: { lastDate: string | null; lastEditedAt: string | null; hoursSinceLastEdit: number | null };
+    platforms: { tiktok: { total: number; stale: number }; instagram: { total: number; stale: number } };
+    staleThresholdHours: number;
+  } | null>(null);
 
   const handleVideoClick = useCallback((post: ContentPost) => {
     setSelectedVideo(post);
@@ -503,6 +578,15 @@ export default function Dashboard() {
     }
   };
 
+  const fetchSyncHealth = async () => {
+    try {
+      const r = await fetch('/api/sync-status');
+      if (r.ok) setSyncHealth(await r.json());
+    } catch (err) {
+      console.error('Failed to fetch sync health:', err);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -517,8 +601,8 @@ export default function Dashboard() {
       setLastFetched(data.fetchedAt);
       setError(null);
 
-      // Also fetch growth data
-      await fetchGrowthData();
+      // Also fetch growth data + sync health
+      await Promise.all([fetchGrowthData(), fetchSyncHealth()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -840,9 +924,12 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">Content Dashboard</h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {lastFetched && `Last updated: ${new Date(lastFetched).toLocaleString()}`}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <p className="text-gray-500 text-sm">
+                {lastFetched && `Last updated: ${new Date(lastFetched).toLocaleString()}`}
+              </p>
+              {syncHealth && <SyncHealthBadge health={syncHealth} />}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button

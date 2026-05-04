@@ -28,6 +28,14 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci --no-audit --no-fund
+      - name: Refresh per-post TikTok metrics
+        # Runs from a GH-hosted runner so TikTok doesn't block (Vercel's
+        # datacenter IPs are blocked). Updates Notion in place; the snapshot
+        # step below sums the freshly-written values.
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: node scripts/refresh-tiktok-posts.js
       - name: Refresh growth snapshot
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
