@@ -507,23 +507,23 @@ export async function fetchGrowthHistory(days: number = 30): Promise<GrowthSnaps
   }
 
   try {
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
+    // Query newest-first so we actually get the last N days (with no date
+    // filter, an ascending sort + page_size returns the OLDEST N rows). Reverse
+    // before returning so callers can keep treating the array as ascending.
     const response = await notion.databases.query({
       database_id: growthDatabaseId,
       sorts: [
         {
           property: 'Date',
-          direction: 'ascending',
+          direction: 'descending',
         },
       ],
       page_size: Math.min(days + 1, 100), // Notion max is 100
     });
 
-    return response.results.map((page: any) => {
+    const rows = response.results.slice().reverse();
+
+    return rows.map((page: any) => {
       const props = page.properties;
       return {
         date: getPropertyValue(props['Date']) || '',
