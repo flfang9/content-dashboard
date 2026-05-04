@@ -5,12 +5,15 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 async function handle() {
-  // Refresh per-post metrics on both platforms before snapshotting, otherwise
-  // runGrowthSnapshot just sums whatever stale view counts are sitting in Notion.
-  // IG and TT are independent — run them in parallel to fit in the cron budget.
+  // Refresh per-post IG metrics before snapshotting so the snapshot sums fresh
+  // values. Skip the TikTok refresh on Vercel: TT blocks datacenter IPs, so
+  // every scrape hangs until the function times out. The GH Actions workflow
+  // (.github/workflows/daily-growth-snapshot.yml) handles TikTok separately.
+  const onVercel = process.env.VERCEL === '1';
+
   const [igRefresh, ttRefresh] = await Promise.all([
     runInstagramImport(),
-    runTikTokRefresh(),
+    onVercel ? Promise.resolve({ updated: 0, failed: 0, errors: ['skipped on Vercel'] }) : runTikTokRefresh(),
   ]);
   const growth = await runGrowthSnapshot();
   const status = growth.success ? 200 : 500;
