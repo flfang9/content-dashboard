@@ -370,9 +370,10 @@ function extractIgShortcode(url: string): string | null {
   return match ? match[2] : null;
 }
 
-// Get all existing Instagram shortcodes in the database (for deduplication)
-export async function getExistingInstagramShortcodes(): Promise<Set<string>> {
-  const shortcodes = new Set<string>();
+// Map every Instagram post in the database by shortcode → Notion page id.
+// Used for both deduplication on import and refreshing metrics on existing posts.
+export async function getInstagramPostsByShortcode(): Promise<Map<string, string>> {
+  const byShortcode = new Map<string, string>();
   let cursor: string | undefined;
 
   do {
@@ -391,14 +392,14 @@ export async function getExistingInstagramShortcodes(): Promise<Set<string>> {
       const url = getPropertyValue(page.properties['Instagram URL']);
       if (url) {
         const shortcode = extractIgShortcode(url);
-        if (shortcode) shortcodes.add(shortcode);
+        if (shortcode) byShortcode.set(shortcode, page.id);
       }
     }
 
     cursor = response.has_more ? response.next_cursor : undefined;
   } while (cursor);
 
-  return shortcodes;
+  return byShortcode;
 }
 
 // Create a new Instagram post entry

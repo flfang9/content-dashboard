@@ -10,10 +10,15 @@ async function runSync() {
     const { results, successCount } = await runPostSync();
     const growth = await runGrowthSnapshot();
 
+    const igParts: string[] = [];
+    if (importResult.updated > 0) igParts.push(`refreshed ${importResult.updated} Instagram posts`);
+    if (importResult.imported > 0) igParts.push(`imported ${importResult.imported} new Instagram posts`);
+
     return NextResponse.json({
       message: `Synced ${successCount}/${results.length} posts` +
-        (importResult.imported > 0 ? `, imported ${importResult.imported} new Instagram posts` : ''),
+        (igParts.length > 0 ? `, ${igParts.join(', ')}` : ''),
       imported: importResult.imported,
+      updated: importResult.updated,
       importErrors: importResult.errors.length > 0 ? importResult.errors : undefined,
       results,
       growth,

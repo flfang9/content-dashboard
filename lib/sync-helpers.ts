@@ -3,7 +3,7 @@ import {
   updatePostMetrics,
   updateEngagementRate,
   upsertGrowthSnapshot,
-  getExistingInstagramShortcodes,
+  getInstagramPostsByShortcode,
   createInstagramPost,
   getDashboardDateString,
   fetchGrowthHistory,
@@ -96,38 +96,93 @@ export async function runGrowthSnapshot(): Promise<GrowthResult> {
   }
 }
 
-// Medium: auto-import new Instagram posts into the content database.
-export async function runInstagramImport(): Promise<{ imported: number; errors: string[] }> {
+// Refresh TikTok per-post metrics by scraping each post URL in parallel batches.
+// HTML scrape only (no Puppeteer) so it's safe on Vercel. When TikTok blocks the
+// request and scrape returns null, we leave the existing value alone rather than
+// clobber it with zeros.
+export async function runTikTokRefresh(): Promise<{ updated: number; failed: number; errors: string[] }> {
+  const errors: string[] = [];
+  let updated = 0;
+  let failed = 0;
+
+  const posts = await fetchPostedForSync();
+  const ttPosts = posts.filter(p => p.tiktokUrl);
+  const BATCH_SIZE = 5;
+
+  for (let i = 0; i < ttPosts.length; i += BATCH_SIZE) {
+    const batch = ttPosts.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async post => {
+        try {
+          const metrics = await scrapeMetrics(post.tiktokUrl!);
+          if (metrics) {
+            await updatePostMetrics(post.id, 'TikTok', metrics);
+            await updateEngagementRate(post.id);
+            updated++;
+          } else {
+            failed++;
+          }
+        } catch (err) {
+          failed++;
+          errors.push(`${post.title.slice(0, 40)}: ${err instanceof Error ? err.message : 'Unknown'}`);
+        }
+      })
+    );
+  }
+
+  return { updated, failed, errors };
+}
+
+// Medium: refresh IG metrics for existing posts and import any new ones.
+// Uses the Graph API for everything (fast, reliable — safe in a cron path).
+export async function runInstagramImport(): Promise<{ imported: number; updated: number; errors: string[] }> {
   clearInstagramCache();
   const errors: string[] = [];
   let imported = 0;
+  let updated = 0;
 
   try {
-    const existingShortcodes = await getExistingInstagramShortcodes();
+    const existingByShortcode = await getInstagramPostsByShortcode();
     const igMedia = await fetchAllInstagramMedia();
 
     for (const media of igMedia) {
-      if (existingShortcodes.has(media.shortcode)) continue;
+      const existingPageId = existingByShortcode.get(media.shortcode);
 
-      try {
-        const title = media.caption
-          ? media.caption.split('\n')[0].slice(0, 80)
-          : `Instagram ${media.shortcode}`;
+      if (existingPageId) {
+        try {
+          await updatePostMetrics(existingPageId, 'Instagram', {
+            views: media.views,
+            likes: media.likes,
+            comments: media.comments,
+            shares: media.shares,
+            saves: media.saves,
+          });
+          await updateEngagementRate(existingPageId);
+          updated++;
+        } catch (err) {
+          errors.push(`update ${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+        }
+      } else {
+        try {
+          const title = media.caption
+            ? media.caption.split('\n')[0].slice(0, 80)
+            : `Instagram ${media.shortcode}`;
 
-        await createInstagramPost({
-          title,
-          url: media.permalink,
-          postDate: media.timestamp?.split('T')[0],
-          views: media.views,
-          likes: media.likes,
-          comments: media.comments,
-          shares: media.shares,
-          saves: media.saves,
-        });
+          await createInstagramPost({
+            title,
+            url: media.permalink,
+            postDate: media.timestamp?.split('T')[0],
+            views: media.views,
+            likes: media.likes,
+            comments: media.comments,
+            shares: media.shares,
+            saves: media.saves,
+          });
 
-        imported++;
-      } catch (err) {
-        errors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+          imported++;
+        } catch (err) {
+          errors.push(`${media.shortcode}: ${err instanceof Error ? err.message : 'Unknown'}`);
+        }
       }
 
       await new Promise(r => setTimeout(r, 100));
@@ -136,7 +191,7 @@ export async function runInstagramImport(): Promise<{ imported: number; errors: 
     errors.push(`Import failed: ${err instanceof Error ? err.message : 'Unknown'}`);
   }
 
-  return { imported, errors };
+  return { imported, updated, errors };
 }
 
 // Slow: per-post Puppeteer scrape. Can take many minutes; will exceed
