@@ -38,8 +38,15 @@ export type PostSyncResult = {
 // Safe to run on Vercel cron (typically completes in < 5s).
 export async function runGrowthSnapshot(): Promise<GrowthResult> {
   try {
+    // Skip TikTok profile scrape on Vercel — datacenter IPs are blocked and the
+    // fetch hangs until the function times out. The GH Actions snapshot job
+    // (.github/workflows/daily-growth-snapshot.yml) handles TT separately and
+    // upserts the same date row later in the day.
     const tiktokUsername = process.env.TIKTOK_USERNAME;
-    const tiktokProfile = tiktokUsername ? await scrapeTikTokProfile(tiktokUsername) : null;
+    const skipTikTokProfile = process.env.VERCEL === '1';
+    const tiktokProfile = tiktokUsername && !skipTikTokProfile
+      ? await scrapeTikTokProfile(tiktokUsername)
+      : null;
     const igAccount = await getInstagramAccountStats();
 
     const posts = await fetchPostedForSync();
