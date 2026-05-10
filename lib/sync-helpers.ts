@@ -220,13 +220,17 @@ export async function runInstagramImport(): Promise<{ imported: number; updated:
   return { imported, updated, errors };
 }
 
-// Slow: per-post Puppeteer scrape. Can take many minutes; will exceed
-// Vercel's hobby-tier 60s limit. Intended for local/CLI execution.
+// Slow: per-post TikTok HTML scrape + IG Graph insights + Notion writes.
+// Runs non-skipped posts in bounded-concurrency batches (CONCURRENCY=4) to
+// keep wall time under the 300s maxDuration as the Posted catalog grows.
 export async function runPostSync(): Promise<{ results: PostSyncResult[]; successCount: number }> {
   const posts = await fetchPostedForSync();
   const results: PostSyncResult[] = [];
   const SKIP_IF_SYNCED_WITHIN_MS = 6 * 60 * 60 * 1000;
+  const CONCURRENCY = 4;
   const now = Date.now();
+
+  const toSync: typeof posts = [];
 
   for (const post of posts) {
     if (post.lastSynced) {
@@ -236,48 +240,54 @@ export async function runPostSync(): Promise<{ results: PostSyncResult[]; succes
         continue;
       }
     }
+    toSync.push(post);
+  }
 
-    const syncedPlatforms: string[] = [];
-    const errors: string[] = [];
+  for (let i = 0; i < toSync.length; i += CONCURRENCY) {
+    const batch = toSync.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async post => {
+      const syncedPlatforms: string[] = [];
+      const errors: string[] = [];
 
-    if (post.tiktokUrl) {
-      try {
-        const metrics = await scrapeMetrics(post.tiktokUrl);
-        if (metrics) {
-          await updatePostMetrics(post.id, 'TikTok', metrics);
-          syncedPlatforms.push('TikTok');
-        } else {
-          errors.push('TikTok: No metrics returned');
+      if (post.tiktokUrl) {
+        try {
+          const metrics = await scrapeMetrics(post.tiktokUrl);
+          if (metrics) {
+            await updatePostMetrics(post.id, 'TikTok', metrics);
+            syncedPlatforms.push('TikTok');
+          } else {
+            errors.push('TikTok: No metrics returned');
+          }
+        } catch (error) {
+          errors.push(`TikTok: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      } catch (error) {
-        errors.push(`TikTok: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        await new Promise(r => setTimeout(r, 200));
       }
-      await new Promise(r => setTimeout(r, 200));
-    }
 
-    if (post.igUrl) {
-      try {
-        const metrics = await scrapeMetrics(post.igUrl);
-        if (metrics) {
-          await updatePostMetrics(post.id, 'Instagram', metrics);
-          syncedPlatforms.push('Instagram');
-        } else {
-          errors.push('Instagram: No metrics returned');
+      if (post.igUrl) {
+        try {
+          const metrics = await scrapeMetrics(post.igUrl);
+          if (metrics) {
+            await updatePostMetrics(post.id, 'Instagram', metrics);
+            syncedPlatforms.push('Instagram');
+          } else {
+            errors.push('Instagram: No metrics returned');
+          }
+        } catch (error) {
+          errors.push(`Instagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      } catch (error) {
-        errors.push(`Instagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        await new Promise(r => setTimeout(r, 200));
       }
-      await new Promise(r => setTimeout(r, 200));
-    }
 
-    if (syncedPlatforms.length > 0) {
-      await updateEngagementRate(post.id);
-      results.push({ id: post.id, title: post.title, success: true, platforms: syncedPlatforms });
-    } else if (errors.length > 0) {
-      results.push({ id: post.id, title: post.title, success: false, error: errors.join('; ') });
-    } else {
-      results.push({ id: post.id, title: post.title, success: false, error: 'No URLs to sync' });
-    }
+      if (syncedPlatforms.length > 0) {
+        await updateEngagementRate(post.id);
+        return { id: post.id, title: post.title, success: true, platforms: syncedPlatforms } as PostSyncResult;
+      } else if (errors.length > 0) {
+        return { id: post.id, title: post.title, success: false, error: errors.join('; ') } as PostSyncResult;
+      }
+      return { id: post.id, title: post.title, success: false, error: 'No URLs to sync' } as PostSyncResult;
+    }));
+    results.push(...batchResults);
   }
 
   return { results, successCount: results.filter(r => r.success).length };
